@@ -21,6 +21,7 @@ const getWishlist = callable<[steam_id: string], WishlistItem[] | string>("get_w
 const checkDemosBatch = callable<[appids: number[]], Record<string, DemoInfo>>("check_demos_batch");
 const setApiKey = callable<[api_key: string], boolean>("set_api_key");
 const getApiKey = callable<[], string>("get_api_key");
+const resolveNamesBatch = callable<[appids: number[]], Record<string, string>>("resolve_names_batch");
 
 // ---- Types ----
 interface WishlistItem {
@@ -141,6 +142,34 @@ async function fetchWishlistFrontend(steamId: string, apiKey: string): Promise<W
   } catch (e) {
     console.error("[Demo Finder] Frontend wishlist fetch failed:", e);
     return [];
+  }
+}
+
+/**
+ * For any wishlist items that still carry placeholder names (e.g. "App 12345")
+ * after the backend has already done its best, call resolve_names_batch to
+ * fetch real names from the Steam Store appdetails API.
+ *
+ * @param items - The wishlist items to check and update.
+ * @returns A new array with placeholder names replaced by real game titles where possible.
+ */
+async function resolveItemNames(items: WishlistItem[]): Promise<WishlistItem[]> {
+  const placeholders = items.filter(
+    (item) => !item.name || item.name.startsWith("App ") || item.name === "Unknown"
+  );
+  if (placeholders.length === 0) return items;
+  try {
+    const names = await resolveNamesBatch(placeholders.map((p) => p.appid));
+    return items.map((item) => {
+      const resolved = names[String(item.appid)];
+      if (resolved && (!item.name || item.name.startsWith("App ") || item.name === "Unknown")) {
+        return { ...item, name: resolved };
+      }
+      return item;
+    });
+  } catch (e) {
+    console.warn("[Demo Finder] Post-load name resolution failed:", e);
+    return items;
   }
 }
 
@@ -342,7 +371,8 @@ function Content() {
         const apiKey = await getApiKey();
         const fallbackItems = await fetchWishlistFrontend(steamId, apiKey);
         if (fallbackItems.length > 0) {
-          setWishlist(fallbackItems.map((item) => ({ ...item })));
+          const resolvedFallback = await resolveItemNames(fallbackItems);
+          setWishlist(resolvedFallback.map((item) => ({ ...item })));
           setPage(0);
           setLoading(false);
           return;
@@ -359,7 +389,8 @@ function Content() {
         }
         setWishlist([]);
       } else {
-        setWishlist(items.map((item) => ({ ...item })));
+        const resolvedItems = await resolveItemNames(items);
+        setWishlist(resolvedItems.map((item) => ({ ...item })));
         setPage(0);
       }
     } catch (e) {
