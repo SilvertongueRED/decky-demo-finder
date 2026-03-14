@@ -506,6 +506,7 @@ class Plugin:
             "demo_url": None,
             "app_url": f"https://store.steampowered.com/app/{appid}/",
             "release_date": None,
+            "name": None,
         }
         async with semaphore:
             try:
@@ -518,6 +519,11 @@ class Plugin:
                     if not app_data.get("success", False):
                         return result
                     details = app_data.get("data", {})
+
+                    # Extract the game name from appdetails
+                    name = details.get("name")
+                    if name:
+                        result["name"] = name
 
                     rd = details.get("release_date", {})
                     if rd and rd.get("date"):
@@ -566,6 +572,7 @@ class Plugin:
                     "demo_url": None,
                     "app_url": f"https://store.steampowered.com/app/{appid}/",
                     "release_date": None,
+                    "name": None,
                 }
 
         return results
