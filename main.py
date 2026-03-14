@@ -126,7 +126,7 @@ class Plugin:
     _app_name_cache: dict = {}
     _app_name_cache_time: float = 0
     _APP_NAME_CACHE_TTL = 3600  # 1 hour
-    _MAX_CONCURRENT_DEMO_CHECKS = 5
+    _MAX_CONCURRENT_REQUESTS = 5
 
     # ---- App-name resolution ----
 
@@ -172,6 +172,48 @@ class Plugin:
                 real = Plugin._app_name_cache.get(item["appid"])
                 if real:
                     item["name"] = real
+
+    async def _resolve_missing_names(self, session: "aiohttp.ClientSession", items: list) -> None:
+        """
+        For items that still carry placeholder names after the GetAppList cache
+        lookup, fall back to querying the Steam Store appdetails API individually.
+        This is the most reliable source of game names.
+
+        Args:
+            session: The active aiohttp.ClientSession to reuse for all requests.
+            items:   The list of wishlist item dicts (mutated in-place).
+        """
+        missing = [
+            item for item in items
+            if not item.get("name") or item["name"].startswith("App ") or item["name"] == "Unknown"
+        ]
+        if not missing:
+            return
+
+        decky.logger.info(f"Resolving names for {len(missing)} items via appdetails")
+        semaphore = asyncio.Semaphore(self._MAX_CONCURRENT_REQUESTS)
+
+        async def _fetch_name(item):
+            appid = item["appid"]
+            async with semaphore:
+                try:
+                    url = f"https://store.steampowered.com/api/appdetails?appids={appid}"
+                    async with session.get(url, headers=_DEFAULT_HEADERS) as resp:
+                        if resp.status != 200:
+                            return
+                        data = await resp.json(content_type=None)
+                        app_data = data.get(str(appid), {})
+                        if not app_data.get("success", False):
+                            return
+                        details = app_data.get("data", {})
+                        name = details.get("name")
+                        if name:
+                            item["name"] = name
+                except Exception as e:
+                    decky.logger.warning(f"Name resolution failed for appid {appid}: {e}")
+
+        await asyncio.gather(*[_fetch_name(item) for item in missing], return_exceptions=True)
+        decky.logger.info("appdetails name resolution complete")
 
     # ---- Settings management ----
 
@@ -419,11 +461,20 @@ class Plugin:
                         f"Found {len(items)} wishlist items (legacy)"
                     )
 
-            # Wait for the name cache before resolving
-            await name_task
+            # Wait for the name cache before resolving (with a timeout so a
+            # slow/failing GetAppList request does not stall wishlist delivery).
+            try:
+                await asyncio.wait_for(name_task, timeout=10.0)
+            except asyncio.TimeoutError:
+                decky.logger.warning(
+                    "App-name cache load timed out after 10s — skipping GetAppList name lookup"
+                )
+            except Exception as e:
+                decky.logger.warning(f"App-name cache load failed: {e}")
 
             if items:
                 self._apply_cached_names(items)
+                await self._resolve_missing_names(session, items)
                 return items
 
         if not api_key:
@@ -547,7 +598,7 @@ class Plugin:
         Steam's rate limits while being significantly faster than
         sequential processing.
         """
-        semaphore = asyncio.Semaphore(Plugin._MAX_CONCURRENT_DEMO_CHECKS)
+        semaphore = asyncio.Semaphore(Plugin._MAX_CONCURRENT_REQUESTS)
 
         async with aiohttp.ClientSession() as session:
             async def _check(aid):
@@ -576,6 +627,46 @@ class Plugin:
                 }
 
         return results
+
+    async def resolve_names_batch(self, appids: list) -> dict:
+        """
+        Resolve game names for a list of appids using the Steam Store appdetails
+        API.  Returns a dict mapping appid (as string) to name.  Used by the
+        frontend as a post-load name-resolution step for any remaining
+        placeholder names.
+        """
+        semaphore = asyncio.Semaphore(self._MAX_CONCURRENT_REQUESTS)
+
+        async with aiohttp.ClientSession() as session:
+            async def _fetch_name(appid):
+                async with semaphore:
+                    try:
+                        url = f"https://store.steampowered.com/api/appdetails?appids={appid}"
+                        async with session.get(url, headers=_DEFAULT_HEADERS) as resp:
+                            if resp.status != 200:
+                                return str(appid), None
+                            data = await resp.json(content_type=None)
+                            app_data = data.get(str(appid), {})
+                            if not app_data.get("success", False):
+                                return str(appid), None
+                            details = app_data.get("data", {})
+                            return str(appid), details.get("name")
+                    except Exception as e:
+                        decky.logger.warning(f"Name fetch failed for appid {appid}: {e}")
+                        return str(appid), None
+
+            tasks = [_fetch_name(appid) for appid in appids]
+            pairs = await asyncio.gather(*tasks, return_exceptions=True)
+
+        result = {}
+        for pair in pairs:
+            if isinstance(pair, Exception):
+                continue
+            appid_str, name = pair
+            if name:
+                result[appid_str] = name
+
+        return result
 
     # Asyncio-compatible long-running code, executed in a task when the plugin is loaded
     async def _main(self):
