@@ -141,6 +141,10 @@ const helpTextStyle = {
     fontSize: "11px", color: "rgba(255,255,255,0.5)",
     padding: "4px 0", lineHeight: "1.4",
 };
+// ---- Persisted state (survives component unmount/remount) ----
+let cachedWishlist = [];
+let cachedHasScanned = false;
+let cachedFilterDemoOnly = false;
 // ---- Helpers ----
 function getSteamId() {
     try {
@@ -255,14 +259,14 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
 };
 // ---- Main Content ----
 function Content() {
-    const [wishlist, setWishlist] = SP_REACT.useState([]);
+    const [wishlist, setWishlist] = SP_REACT.useState(cachedWishlist);
     const [loading, setLoading] = SP_REACT.useState(false);
     const [scanning, setScanning] = SP_REACT.useState(false);
     const [scanProgress, setScanProgress] = SP_REACT.useState("");
     const [error, setError] = SP_REACT.useState(null);
     const [page, setPage] = SP_REACT.useState(0);
-    const [filterDemoOnly, setFilterDemoOnly] = SP_REACT.useState(false);
-    const [hasScanned, setHasScanned] = SP_REACT.useState(false);
+    const [filterDemoOnly, setFilterDemoOnly] = SP_REACT.useState(cachedFilterDemoOnly);
+    const [hasScanned, setHasScanned] = SP_REACT.useState(cachedHasScanned);
     const [hasApiKey, setHasApiKey] = SP_REACT.useState(false);
     const [showSetup, setShowSetup] = SP_REACT.useState(false);
     const [sortBy, setSortBy] = SP_REACT.useState("alpha");
@@ -277,6 +281,10 @@ function Content() {
             return false;
         }
     }, []);
+    // Sync component state back to module-level cache for persistence
+    SP_REACT.useEffect(() => { cachedWishlist = wishlist; }, [wishlist]);
+    SP_REACT.useEffect(() => { cachedHasScanned = hasScanned; }, [hasScanned]);
+    SP_REACT.useEffect(() => { cachedFilterDemoOnly = filterDemoOnly; }, [filterDemoOnly]);
     const loadWishlist = SP_REACT.useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -363,7 +371,16 @@ function Content() {
                 for (const appidStr of Object.keys(results)) {
                     const idx = updatedWishlist.findIndex((item) => String(item.appid) === appidStr);
                     if (idx !== -1) {
-                        updatedWishlist[idx] = { ...updatedWishlist[idx], demoInfo: results[appidStr] };
+                        const demoResult = results[appidStr];
+                        // Update game name from appdetails if current name is a placeholder
+                        const currentName = updatedWishlist[idx].name;
+                        const resolvedName = demoResult.name;
+                        if (resolvedName && (!currentName || currentName.startsWith("App ") || currentName === "Unknown")) {
+                            updatedWishlist[idx] = { ...updatedWishlist[idx], name: resolvedName, demoInfo: demoResult };
+                        }
+                        else {
+                            updatedWishlist[idx] = { ...updatedWishlist[idx], demoInfo: demoResult };
+                        }
                     }
                 }
                 setWishlist([...updatedWishlist]);
@@ -387,7 +404,10 @@ function Content() {
                 setShowSetup(true);
                 setError("Steam API key required. Please configure your key below to get started.");
             }
-            loadWishlist();
+            // Only auto-load if there is no cached data
+            if (cachedWishlist.length === 0) {
+                loadWishlist();
+            }
         });
     }, [checkApiKey, loadWishlist]);
     const handleKeySaved = () => {
