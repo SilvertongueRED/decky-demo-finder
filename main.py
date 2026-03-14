@@ -3,6 +3,7 @@ import aiohttp
 import asyncio
 import json as json_module
 import urllib.parse
+import platform
 
 class Plugin:
     """
@@ -10,10 +11,36 @@ class Plugin:
     Uses the Steam Store API to fetch app details and identify linked demos.
     """
 
+    @staticmethod
+    def _build_user_agent() -> str:
+        """Build a cross-platform User-Agent string."""
+        system = platform.system()
+        machine = platform.machine() or "x86_64"
+        if system == "Linux":
+            return (
+                f"Mozilla/5.0 (X11; Linux {machine}) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        elif system == "Windows":
+            return (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        elif system == "Darwin":
+            return (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        return (
+            "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+
     BROWSER_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; Valve Steam Deck) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
     }
 
@@ -36,11 +63,12 @@ class Plugin:
         PAGE_SIZE = 100
         all_results = []
         start_index = 0
+        headers = {**self.BROWSER_HEADERS, "User-Agent": self._build_user_agent()}
 
         try:
             while True:
                 input_data = {
-                    "steamid": int(steam_id),
+                    "steamid": str(steam_id),
                     "context": {
                         "language": "english",
                         "elanguage": 0,
@@ -48,6 +76,7 @@ class Plugin:
                         "steam_realm": 1,
                     },
                     "data_request": {"include_basic_info": True},
+                    "filters": {},
                     "start_index": start_index,
                     "page_size": PAGE_SIZE,
                 }
@@ -55,7 +84,7 @@ class Plugin:
                     "https://api.steampowered.com/IWishlistService/GetWishlistSortedFiltered/v1/"
                     f"?input_json={urllib.parse.quote(json_module.dumps(input_data))}"
                 )
-                async with session.get(url, headers=self.BROWSER_HEADERS) as resp:
+                async with session.get(url, headers=headers) as resp:
                     if resp.status != 200:
                         decky.logger.warning(
                             f"GetWishlistSortedFiltered returned status {resp.status}"
@@ -108,13 +137,14 @@ class Plugin:
         Simpler endpoint that returns appids (names may not be included).
         Returns list of {appid, name} on success, or None on failure.
         """
-        input_data = {"steamid": int(steam_id)}
+        input_data = {"steamid": str(steam_id)}
         url = (
             "https://api.steampowered.com/IWishlistService/GetWishlist/v1/"
             f"?input_json={urllib.parse.quote(json_module.dumps(input_data))}"
         )
+        headers = {**self.BROWSER_HEADERS, "User-Agent": self._build_user_agent()}
         try:
-            async with session.get(url, headers=self.BROWSER_HEADERS) as resp:
+            async with session.get(url, headers=headers) as resp:
                 if resp.status != 200:
                     decky.logger.warning(
                         f"GetWishlist returned status {resp.status}"
@@ -156,6 +186,7 @@ class Plugin:
         page = 0
         headers = {
             **self.BROWSER_HEADERS,
+            "User-Agent": self._build_user_agent(),
             "Referer": f"https://store.steampowered.com/wishlist/profiles/{steam_id}/",
         }
 
@@ -217,7 +248,14 @@ class Plugin:
         Tries multiple endpoints with graceful fallback.
         Returns a list of { appid, name } objects.
         """
-        decky.logger.info(f"Fetching wishlist for Steam ID: {steam_id}")
+        if not steam_id or not steam_id.strip():
+            decky.logger.error("get_wishlist called with empty steam_id")
+            return []
+
+        decky.logger.info(
+            f"Fetching wishlist for Steam ID: {steam_id} "
+            f"(platform: {platform.system()})"
+        )
 
         async with aiohttp.ClientSession() as session:
             # Strategy 1: New paginated/sorted API
