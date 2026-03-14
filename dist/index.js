@@ -182,7 +182,7 @@ function Content() {
             }
             const items = await getWishlist(steamId);
             if (!items || items.length === 0) {
-                setError("Wishlist is empty or private. Set wishlist privacy to public in Steam settings.");
+                setError("Wishlist is empty or could not be loaded. Ensure your wishlist privacy is set to Public in Steam Settings > Privacy Settings.");
                 setWishlist([]);
             }
             else {
