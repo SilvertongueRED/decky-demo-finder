@@ -1,0 +1,11 @@
+{
+  "name": "Demo Finder",
+  "author": "Slvrtnge",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["wishlist", "demo", "utility"],
+    "description": "Check if your wishlisted games have demos available and quickly navigate to them.",
+    "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/PluginLoader"
+  }
+}
