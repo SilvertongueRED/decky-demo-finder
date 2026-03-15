@@ -201,7 +201,8 @@ const fullPageStatusStyle: React.CSSProperties = {
 
 const fullPagePaginationStyle: React.CSSProperties = {
   display: "flex", justifyContent: "center", alignItems: "center",
-  gap: "16px", padding: "12px", borderTop: "1px solid rgba(255,255,255,0.1)",
+  gap: "16px", padding: "24px 12px", marginTop: "8px",
+  borderTop: "1px solid rgba(255,255,255,0.1)",
   flexShrink: 0,
 };
 
