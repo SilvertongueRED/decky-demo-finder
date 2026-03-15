@@ -833,11 +833,12 @@ class Plugin:
             "name": None,
             "definitive": False,
         }
+        req_timeout = aiohttp.ClientTimeout(total=15)
         async with semaphore:
             url = f"https://store.steampowered.com/api/appdetails?appids={appid}&cc=us&l=english"
             for attempt in range(6):
                 try:
-                    async with session.get(url, headers=_DEFAULT_HEADERS) as resp:
+                    async with session.get(url, headers=_DEFAULT_HEADERS, timeout=req_timeout) as resp:
                         if resp.status == 429 or resp.status >= 500:
                             if rate_limit_counter is not None:
                                 rate_limit_counter[0] += 1
@@ -887,13 +888,10 @@ class Plugin:
                                 return result
                         app_data = app_entry if isinstance(app_entry, dict) else {}
                         if not app_data.get("success", False):
-                            if attempt < 5:
-                                await asyncio.sleep(self._backoff_wait(attempt))
-                                continue
-                            else:
-                                # Steam consistently says no data for this app — treat as definitive
-                                result["definitive"] = True
-                                return result
+                            # Steam says no data — return non-definitive so the
+                            # item can be re-checked on a subsequent scan.
+                            await asyncio.sleep(0.3)
+                            return result
                         details = app_data.get("data", {})
 
                         # Extract the game name from appdetails
