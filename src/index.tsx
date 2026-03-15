@@ -578,11 +578,20 @@ const FullPageWishlistWithDemos: FC = () => {
             cachedDemoResults[appidStr] = demoResult;
           }
         }
-        setWishlist([...updatedWishlist]);
       } catch (e) {
         console.error("[Demo Finder Full Page] Batch check error:", e);
       }
     }
+
+    // Re-apply cached demo results so items skipped by the definitive filter
+    // (or whose React state lost demoInfo) are always up to date.
+    for (let i = 0; i < updatedWishlist.length; i++) {
+      const cached = cachedDemoResults[String(updatedWishlist[i].appid)];
+      if (cached) {
+        updatedWishlist[i] = { ...updatedWishlist[i], demoInfo: cached };
+      }
+    }
+    setWishlist([...updatedWishlist]);
 
     setScanning(false);
     setHasScanned(true);
@@ -856,11 +865,20 @@ function Content() {
             cachedDemoResults[appidStr] = demoResult;
           }
         }
-        setWishlist([...updatedWishlist]);
       } catch (e) {
         console.error("Batch check error:", e);
       }
     }
+
+    // Re-apply cached demo results so items skipped by the definitive filter
+    // (or whose React state lost demoInfo) are always up to date.
+    for (let i = 0; i < updatedWishlist.length; i++) {
+      const cached = cachedDemoResults[String(updatedWishlist[i].appid)];
+      if (cached) {
+        updatedWishlist[i] = { ...updatedWishlist[i], demoInfo: cached };
+      }
+    }
+    setWishlist([...updatedWishlist]);
 
     setScanning(false);
     setHasScanned(true);
