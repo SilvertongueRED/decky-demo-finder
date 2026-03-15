@@ -813,13 +813,20 @@ class Plugin:
                 try:
                     async with session.get(url, headers=_DEFAULT_HEADERS) as resp:
                         if resp.status == 429 or resp.status >= 500:
-                            wait = 2.0 * (2 ** attempt)
-                            decky.logger.warning(
-                                f"_check_demo_shared_session: status {resp.status} for {appid}, "
-                                f"retrying in {wait:.0f}s (attempt {attempt + 1}/4)"
-                            )
-                            await asyncio.sleep(wait)
-                            continue
+                            if attempt < 3:
+                                wait = 2.0 * (2 ** attempt)
+                                decky.logger.warning(
+                                    f"_check_demo_shared_session: status {resp.status} for {appid}, "
+                                    f"retrying in {wait:.0f}s (attempt {attempt + 1}/4)"
+                                )
+                                await asyncio.sleep(wait)
+                                continue
+                            else:
+                                decky.logger.warning(
+                                    f"_check_demo_shared_session: status {resp.status} for {appid}, "
+                                    f"giving up after {attempt + 1} attempts"
+                                )
+                                return result
                         if resp.status != 200:
                             decky.logger.warning(
                                 f"_check_demo_shared_session: unexpected status {resp.status} for {appid}"
