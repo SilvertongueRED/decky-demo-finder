@@ -211,7 +211,7 @@ const fullPageCardStyle = {
     display: "flex", flexDirection: "column",
 };
 const fullPageCardImgStyle = {
-    width: "100%", height: "100px",
+    width: "100%", height: "150px",
     objectFit: "cover", display: "block",
     background: "rgba(0,0,0,0.3)",
 };
@@ -727,7 +727,7 @@ const FullPageWishlistWithDemos = () => {
                                             placeholder.style.display = "flex";
                                     }
                                 } }), SP_JSX.jsx("div", { className: "img-placeholder", style: {
-                                    display: "none", width: "100%", height: "100px",
+                                    display: "none", width: "100%", height: "150px",
                                     background: "linear-gradient(135deg, rgba(27,40,56,0.9) 0%, rgba(15,25,40,0.9) 100%)",
                                     alignItems: "center", justifyContent: "center",
                                     fontSize: "11px", color: "rgba(255,255,255,0.35)",
