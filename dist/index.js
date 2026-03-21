@@ -112,6 +112,7 @@ const loadDemoCache = callable("load_demo_cache");
 const setSgdbApiKey = callable("set_sgdb_api_key");
 const getSgdbApiKey = callable("get_sgdb_api_key");
 const fetchSgdbImagesBatch = callable("fetch_sgdb_images_batch");
+const openUrlInBrowser = callable("open_url_in_browser");
 const BATCH_SIZE = 50;
 const ITEMS_PER_PAGE = 20;
 // Maximum pages to paginate through wishlistdata (100 items/page → 2 000 items max)
@@ -201,7 +202,7 @@ const fullPageActiveBtnStyle = {
 };
 const fullPageGridStyle = {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(242px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(266px, 1fr))",
     gap: "12px", padding: "16px 24px 24px 24px",
     overflowY: "auto", flex: 1,
     minHeight: 0,
@@ -215,7 +216,7 @@ const fullPageCardStyle = {
     display: "flex", flexDirection: "column",
 };
 const fullPageCardImgStyle = {
-    width: "100%", height: "165px",
+    width: "100%", height: "182px",
     objectFit: "cover", display: "block",
     background: "rgba(0,0,0,0.3)",
 };
@@ -526,8 +527,13 @@ const SgdbKeySetup = ({ hasKey, onKeySaved }) => {
         }
         setSaving(false);
     };
-    const openKeyPage = () => {
-        DFL.Navigation.NavigateToExternalWeb(SGDB_KEY_HELP_URL);
+    const openKeyPage = async () => {
+        try {
+            await openUrlInBrowser(SGDB_KEY_HELP_URL);
+        }
+        catch (_e) {
+            DFL.Navigation.NavigateToExternalWeb(SGDB_KEY_HELP_URL);
+        }
         DFL.Navigation.CloseSideMenus();
     };
     return (SP_JSX.jsxs(DFL.PanelSection, { title: "SteamGridDB API Key", children: [SP_JSX.jsx("div", { style: helpTextStyle, children: hasKey
@@ -801,7 +807,7 @@ const FullPageWishlistWithDemos = () => {
                                         }
                                     }
                                 } }), SP_JSX.jsx("div", { className: "img-placeholder", style: {
-                                    display: "none", width: "100%", height: "165px",
+                                    display: "none", width: "100%", height: "182px",
                                     background: "linear-gradient(135deg, rgba(27,40,56,0.9) 0%, rgba(15,25,40,0.9) 100%)",
                                     alignItems: "center", justifyContent: "center",
                                     fontSize: "11px", color: "rgba(255,255,255,0.35)",
