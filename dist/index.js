@@ -93,6 +93,10 @@ function FaSyncAlt (props) {
   return GenIcon({"attr":{"viewBox":"0 0 512 512"},"child":[{"tag":"path","attr":{"d":"M512 176.001C512 273.203 433.202 352 336 352c-11.22 0-22.19-1.062-32.827-3.069l-24.012 27.014A23.999 23.999 0 0 1 261.223 384H224v40c0 13.255-10.745 24-24 24h-40v40c0 13.255-10.745 24-24 24H24c-13.255 0-24-10.745-24-24v-78.059c0-6.365 2.529-12.47 7.029-16.971l161.802-161.802C163.108 213.814 160 195.271 160 176 160 78.798 238.797.001 335.999 0 433.488-.001 512 78.511 512 176.001zM336 128c0 26.51 21.49 48 48 48s48-21.49 48-48-21.49-48-48-48-48 21.49-48 48z"},"child":[]}]})(props);
 }function FaGamepad (props) {
   return GenIcon({"attr":{"viewBox":"0 0 640 512"},"child":[{"tag":"path","attr":{"d":"M480.07 96H160a160 160 0 1 0 114.24 272h91.52A160 160 0 1 0 480.07 96zM248 268a12 12 0 0 1-12 12h-52v52a12 12 0 0 1-12 12h-24a12 12 0 0 1-12-12v-52H84a12 12 0 0 1-12-12v-24a12 12 0 0 1 12-12h52v-52a12 12 0 0 1 12-12h24a12 12 0 0 1 12 12v52h52a12 12 0 0 1 12 12zm216 76a40 40 0 1 1 40-40 40 40 0 0 1-40 40zm64-96a40 40 0 1 1 40-40 40 40 0 0 1-40 40z"},"child":[]}]})(props);
+}function FaEye (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 576 512"},"child":[{"tag":"path","attr":{"d":"M572.52 241.4C518.29 135.59 410.93 64 288 64S57.68 135.64 3.48 241.41a32.35 32.35 0 0 0 0 29.19C57.71 376.41 165.07 448 288 448s230.32-71.64 284.52-177.41a32.35 32.35 0 0 0 0-29.19zM288 400a144 144 0 1 1 144-144 143.93 143.93 0 0 1-144 144zm0-240a95.31 95.31 0 0 0-25.31 3.79 47.85 47.85 0 0 1-66.9 66.9A95.78 95.78 0 1 0 288 160z"},"child":[]}]})(props);
+}function FaEyeSlash (props) {
+  return GenIcon({"attr":{"viewBox":"0 0 640 512"},"child":[{"tag":"path","attr":{"d":"M320 400c-75.85 0-137.25-58.71-142.9-133.11L72.2 185.82c-13.79 17.3-26.48 35.59-36.72 55.59a32.35 32.35 0 0 0 0 29.19C89.71 376.41 197.07 448 320 448c26.91 0 52.87-4 77.89-10.46L346 397.39a144.13 144.13 0 0 1-26 2.61zm313.82 58.1l-110.55-85.44a331.25 331.25 0 0 0 81.25-102.07 32.35 32.35 0 0 0 0-29.19C550.29 135.59 442.93 64 320 64a308.15 308.15 0 0 0-147.32 37.7L45.46 3.37A16 16 0 0 0 23 6.18L3.37 31.45A16 16 0 0 0 6.18 53.9l588.36 454.73a16 16 0 0 0 22.46-2.81l19.64-25.27a16 16 0 0 0-2.82-22.45zm-183.72-142l-39.3-30.38A94.75 94.75 0 0 0 416 256a94.76 94.76 0 0 0-121.31-92.21A47.65 47.65 0 0 1 304 192a46.64 46.64 0 0 1-1.54 10l-73.61-56.89A142.31 142.31 0 0 1 320 112a143.92 143.92 0 0 1 144 144c0 21.63-5.29 41.79-13.9 60.11z"},"child":[]}]})(props);
 }function FaExternalLinkAlt (props) {
   return GenIcon({"attr":{"viewBox":"0 0 512 512"},"child":[{"tag":"path","attr":{"d":"M432,320H400a16,16,0,0,0-16,16V448H64V128H208a16,16,0,0,0,16-16V80a16,16,0,0,0-16-16H48A48,48,0,0,0,0,112V464a48,48,0,0,0,48,48H400a48,48,0,0,0,48-48V336A16,16,0,0,0,432,320ZM488,0h-128c-21.37,0-32.05,25.91-17,41l35.73,35.73L135,320.37a24,24,0,0,0,0,34L157.67,377a24,24,0,0,0,34,0L435.28,133.32,471,169c15,15,41,4.5,41-17V24A24,24,0,0,0,488,0Z"},"child":[]}]})(props);
 }function FaChevronUp (props) {
@@ -477,8 +481,41 @@ const GameStoreLinkButton = ({ appid, gameName }) => {
 const ApiKeySetup = ({ hasKey, onKeySaved }) => {
     const [saving, setSaving] = SP_REACT.useState(false);
     const [keyValue, setKeyValue] = SP_REACT.useState("");
+    const [showKey, setShowKey] = SP_REACT.useState(false);
+    const wrapperRef = SP_REACT.useRef(null);
+    // Read the actual DOM input value — handles Steam Deck virtual keyboard
+    // which may set the value without firing React onChange events.
+    const getInputValue = SP_REACT.useCallback(() => {
+        const input = wrapperRef.current?.querySelector("input");
+        if (input && input.value)
+            return input.value;
+        return keyValue;
+    }, [keyValue]);
+    // Attach native event listeners to catch input that React's synthetic
+    // event system misses (e.g. Steam Deck virtual keyboard with bIsPassword).
+    // Also poll as a final safety net in case no events fire at all.
+    SP_REACT.useEffect(() => {
+        const el = wrapperRef.current;
+        if (!el)
+            return;
+        const input = el.querySelector("input");
+        if (!input)
+            return;
+        const sync = () => setKeyValue(input.value);
+        input.addEventListener("input", sync);
+        input.addEventListener("change", sync);
+        const id = setInterval(() => {
+            if (input.value !== keyValue)
+                setKeyValue(input.value);
+        }, 400);
+        return () => {
+            input.removeEventListener("input", sync);
+            input.removeEventListener("change", sync);
+            clearInterval(id);
+        };
+    }, [keyValue]);
     const handleSave = async () => {
-        const value = keyValue.trim();
+        const value = getInputValue().trim();
         if (!value) {
             toaster.toast({ title: "Demo Finder", body: "Please enter an API key first." });
             return;
@@ -495,6 +532,9 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
         }
         toaster.toast({ title: "Demo Finder", body: "API key saved! Refreshing wishlist..." });
         setKeyValue("");
+        const input = wrapperRef.current?.querySelector("input");
+        if (input)
+            input.value = "";
         try {
             onKeySaved();
         }
@@ -507,14 +547,47 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
     };
     return (SP_JSX.jsxs(DFL.PanelSection, { title: "Steam API Key Setup", children: [SP_JSX.jsx("div", { style: helpTextStyle, children: hasKey
                     ? "✅ API key is configured. You can update it below if needed."
-                    : "⚠️ A Steam Web API key is required to access your wishlist. It's free to register." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "Steam Web API Key", value: keyValue, onChange: (e) => setKeyValue(e.target.value), bIsPassword: true }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save API Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Go to steamcommunity.com/dev/apikey to register a key. Enter any domain name (e.g. \"localhost\"). Your wishlist must also be set to Public." })] }));
+                    : "⚠️ A Steam Web API key is required to access your wishlist. It's free to register." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { ref: wrapperRef, children: SP_JSX.jsx(DFL.TextField, { label: "Steam Web API Key", value: keyValue, onChange: (e) => setKeyValue(e.target.value), bIsPassword: !showKey }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowKey(!showKey), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [showKey ? SP_JSX.jsx(FaEyeSlash, { size: 12 }) : SP_JSX.jsx(FaEye, { size: 12 }), showKey ? "Hide Key" : "Show Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save API Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Go to steamcommunity.com/dev/apikey to register a key. Enter any domain name (e.g. \"localhost\"). Your wishlist must also be set to Public." })] }));
 };
 // ---- SteamGridDB API Key Setup ----
 const SgdbKeySetup = ({ hasKey, onKeySaved }) => {
     const [saving, setSaving] = SP_REACT.useState(false);
     const [keyValue, setKeyValue] = SP_REACT.useState("");
+    const [showKey, setShowKey] = SP_REACT.useState(false);
+    const wrapperRef = SP_REACT.useRef(null);
+    // Read the actual DOM input value — handles Steam Deck virtual keyboard
+    // which may set the value without firing React onChange events.
+    const getInputValue = SP_REACT.useCallback(() => {
+        const input = wrapperRef.current?.querySelector("input");
+        if (input && input.value)
+            return input.value;
+        return keyValue;
+    }, [keyValue]);
+    // Attach native event listeners to catch input that React's synthetic
+    // event system misses (e.g. Steam Deck virtual keyboard with bIsPassword).
+    // Also poll as a final safety net in case no events fire at all.
+    SP_REACT.useEffect(() => {
+        const el = wrapperRef.current;
+        if (!el)
+            return;
+        const input = el.querySelector("input");
+        if (!input)
+            return;
+        const sync = () => setKeyValue(input.value);
+        input.addEventListener("input", sync);
+        input.addEventListener("change", sync);
+        const id = setInterval(() => {
+            if (input.value !== keyValue)
+                setKeyValue(input.value);
+        }, 400);
+        return () => {
+            input.removeEventListener("input", sync);
+            input.removeEventListener("change", sync);
+            clearInterval(id);
+        };
+    }, [keyValue]);
     const handleSave = async () => {
-        const value = keyValue.trim();
+        const value = getInputValue().trim();
         if (!value) {
             toaster.toast({ title: "Demo Finder", body: "Please enter a SteamGridDB API key first." });
             return;
@@ -533,6 +606,9 @@ const SgdbKeySetup = ({ hasKey, onKeySaved }) => {
         cachedSgdbApiKey = null;
         toaster.toast({ title: "Demo Finder", body: "SteamGridDB API key saved!" });
         setKeyValue("");
+        const input = wrapperRef.current?.querySelector("input");
+        if (input)
+            input.value = "";
         try {
             onKeySaved();
         }
@@ -556,7 +632,7 @@ const SgdbKeySetup = ({ hasKey, onKeySaved }) => {
     };
     return (SP_JSX.jsxs(DFL.PanelSection, { title: "SteamGridDB API Key", children: [SP_JSX.jsx("div", { style: helpTextStyle, children: hasKey
                     ? "✅ SteamGridDB key configured. Missing artwork will use SGDB as a fallback."
-                    : "⚠️ Optional: Provide a SteamGridDB API key to fill in missing game artwork." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free SGDB API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.TextField, { label: "SteamGridDB API Key", value: keyValue, onChange: (e) => setKeyValue(e.target.value), bIsPassword: true }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save SGDB Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Free key available at steamgriddb.com \u2014 provides artwork for games missing images on Steam." })] }));
+                    : "⚠️ Optional: Provide a SteamGridDB API key to fill in missing game artwork." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free SGDB API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { ref: wrapperRef, children: SP_JSX.jsx(DFL.TextField, { label: "SteamGridDB API Key", value: keyValue, onChange: (e) => setKeyValue(e.target.value), bIsPassword: !showKey }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowKey(!showKey), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [showKey ? SP_JSX.jsx(FaEyeSlash, { size: 12 }) : SP_JSX.jsx(FaEye, { size: 12 }), showKey ? "Hide Key" : "Show Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save SGDB Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Free key available at steamgriddb.com \u2014 provides artwork for games missing images on Steam." })] }));
 };
 function detectControllerType(id) {
     const lower = id.toLowerCase();
