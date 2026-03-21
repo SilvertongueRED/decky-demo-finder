@@ -15,7 +15,7 @@ import {
   routerHook,
 } from "@decky/api";
 import { useState, useEffect, useCallback, useRef, Fragment, FC, useMemo } from "react";
-import { FaGamepad, FaSearch, FaExternalLinkAlt, FaSyncAlt, FaKey, FaSortAlphaDown, FaChevronDown, FaChevronUp } from "react-icons/fa";
+import { FaGamepad, FaSearch, FaExternalLinkAlt, FaSyncAlt, FaKey, FaSortAlphaDown, FaChevronDown, FaChevronUp, FaEye, FaEyeSlash } from "react-icons/fa";
 
 // ---- Backend callables ----
 const getWishlist = callable<[steam_id: string], WishlistItem[] | string>("get_wishlist");
@@ -469,9 +469,43 @@ const GameStoreLinkButton: FC<{ appid: number; gameName: string }> = ({ appid, g
 const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, onKeySaved }) => {
   const [saving, setSaving] = useState(false);
   const [keyValue, setKeyValue] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Read the actual DOM input value — handles Steam Deck virtual keyboard
+  // which may set the value without firing React onChange events.
+  const getInputValue = useCallback((): string => {
+    const input = wrapperRef.current?.querySelector("input");
+    if (input && input.value) return input.value;
+    return keyValue;
+  }, [keyValue]);
+
+  // Attach native event listeners to catch input that React's synthetic
+  // event system misses (e.g. Steam Deck virtual keyboard with bIsPassword).
+  // Also poll as a final safety net in case no events fire at all.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const input = el.querySelector("input");
+    if (!input) return;
+
+    const sync = () => setKeyValue(input.value);
+    input.addEventListener("input", sync);
+    input.addEventListener("change", sync);
+
+    const id = setInterval(() => {
+      if (input.value !== keyValue) setKeyValue(input.value);
+    }, 400);
+
+    return () => {
+      input.removeEventListener("input", sync);
+      input.removeEventListener("change", sync);
+      clearInterval(id);
+    };
+  }, [keyValue]);
 
   const handleSave = async () => {
-    const value = keyValue.trim();
+    const value = getInputValue().trim();
     if (!value) {
       toaster.toast({ title: "Demo Finder", body: "Please enter an API key first." });
       return;
@@ -487,6 +521,8 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
     }
     toaster.toast({ title: "Demo Finder", body: "API key saved! Refreshing wishlist..." });
     setKeyValue("");
+    const input = wrapperRef.current?.querySelector("input");
+    if (input) input.value = "";
     try { onKeySaved(); } catch (_e) { /* best-effort post-save callback */ }
     setSaving(false);
   };
@@ -511,12 +547,22 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <TextField
-          label="Steam Web API Key"
-          value={keyValue}
-          onChange={(e) => setKeyValue(e.target.value)}
-          bIsPassword={true}
-        />
+        <div ref={wrapperRef}>
+          <TextField
+            label="Steam Web API Key"
+            value={keyValue}
+            onChange={(e) => setKeyValue(e.target.value)}
+            bIsPassword={!showKey}
+          />
+        </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => setShowKey(!showKey)}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
+            {showKey ? <FaEyeSlash size={12} /> : <FaEye size={12} />}
+            {showKey ? "Hide Key" : "Show Key"}
+          </div>
+        </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={handleSave} disabled={saving}>
@@ -536,9 +582,43 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
 const SgdbKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, onKeySaved }) => {
   const [saving, setSaving] = useState(false);
   const [keyValue, setKeyValue] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Read the actual DOM input value — handles Steam Deck virtual keyboard
+  // which may set the value without firing React onChange events.
+  const getInputValue = useCallback((): string => {
+    const input = wrapperRef.current?.querySelector("input");
+    if (input && input.value) return input.value;
+    return keyValue;
+  }, [keyValue]);
+
+  // Attach native event listeners to catch input that React's synthetic
+  // event system misses (e.g. Steam Deck virtual keyboard with bIsPassword).
+  // Also poll as a final safety net in case no events fire at all.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const input = el.querySelector("input");
+    if (!input) return;
+
+    const sync = () => setKeyValue(input.value);
+    input.addEventListener("input", sync);
+    input.addEventListener("change", sync);
+
+    const id = setInterval(() => {
+      if (input.value !== keyValue) setKeyValue(input.value);
+    }, 400);
+
+    return () => {
+      input.removeEventListener("input", sync);
+      input.removeEventListener("change", sync);
+      clearInterval(id);
+    };
+  }, [keyValue]);
 
   const handleSave = async () => {
-    const value = keyValue.trim();
+    const value = getInputValue().trim();
     if (!value) {
       toaster.toast({ title: "Demo Finder", body: "Please enter a SteamGridDB API key first." });
       return;
@@ -556,6 +636,8 @@ const SgdbKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey,
     cachedSgdbApiKey = null;
     toaster.toast({ title: "Demo Finder", body: "SteamGridDB API key saved!" });
     setKeyValue("");
+    const input = wrapperRef.current?.querySelector("input");
+    if (input) input.value = "";
     try { onKeySaved(); } catch (_e) { /* best-effort post-save callback */ }
     setSaving(false);
   };
@@ -589,12 +671,22 @@ const SgdbKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey,
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <TextField
-          label="SteamGridDB API Key"
-          value={keyValue}
-          onChange={(e) => setKeyValue(e.target.value)}
-          bIsPassword={true}
-        />
+        <div ref={wrapperRef}>
+          <TextField
+            label="SteamGridDB API Key"
+            value={keyValue}
+            onChange={(e) => setKeyValue(e.target.value)}
+            bIsPassword={!showKey}
+          />
+        </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => setShowKey(!showKey)}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
+            {showKey ? <FaEyeSlash size={12} /> : <FaEye size={12} />}
+            {showKey ? "Hide Key" : "Show Key"}
+          </div>
+        </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={handleSave} disabled={saving}>
