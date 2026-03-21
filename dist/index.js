@@ -216,8 +216,9 @@ const fullPageCardStyle = {
     display: "flex", flexDirection: "column",
 };
 const fullPageCardImgStyle = {
-    width: "100%", height: "182px",
-    objectFit: "cover", display: "block",
+    width: "100%", height: "auto",
+    aspectRatio: "460 / 215",
+    objectFit: "contain", display: "block",
     background: "rgba(0,0,0,0.3)",
 };
 const fullPageCardBodyStyle = {
@@ -529,7 +530,13 @@ const SgdbKeySetup = ({ hasKey, onKeySaved }) => {
     };
     const openKeyPage = async () => {
         try {
-            await openUrlInBrowser(SGDB_KEY_HELP_URL);
+            const sc = window.SteamClient;
+            if (sc?.System?.OpenInSystemBrowser) {
+                sc.System.OpenInSystemBrowser(SGDB_KEY_HELP_URL);
+            }
+            else {
+                await openUrlInBrowser(SGDB_KEY_HELP_URL);
+            }
         }
         catch (_e) {
             DFL.Navigation.NavigateToExternalWeb(SGDB_KEY_HELP_URL);
@@ -807,7 +814,7 @@ const FullPageWishlistWithDemos = () => {
                                         }
                                     }
                                 } }), SP_JSX.jsx("div", { className: "img-placeholder", style: {
-                                    display: "none", width: "100%", height: "182px",
+                                    display: "none", width: "100%", aspectRatio: "460 / 215",
                                     background: "linear-gradient(135deg, rgba(27,40,56,0.9) 0%, rgba(15,25,40,0.9) 100%)",
                                     alignItems: "center", justifyContent: "center",
                                     fontSize: "11px", color: "rgba(255,255,255,0.35)",
