@@ -6,6 +6,7 @@ import os
 import platform
 import random
 import stat
+import subprocess
 import time
 
 
@@ -409,6 +410,24 @@ class Plugin:
         """Load the user's SteamGridDB API key from plugin settings."""
         settings = _load_settings()
         return settings.get("sgdb_api_key", "")
+
+    async def open_url_in_browser(self, url: str) -> bool:
+        """Open a URL in the system's default browser via xdg-open.
+
+        Only allows URLs with an https scheme to prevent command injection.
+        This bypasses Steam's embedded browser which cannot handle OAuth
+        login flows (e.g. SteamGridDB's "Login via Steam" button).
+        """
+        if not url.startswith("https://"):
+            decky.logger.warning(f"open_url_in_browser: rejected non-https URL")
+            return False
+        try:
+            subprocess.Popen(["xdg-open", url])
+            decky.logger.info(f"Opened URL in system browser: {url}")
+            return True
+        except Exception as e:
+            decky.logger.error(f"open_url_in_browser failed: {e}")
+            return False
 
     async def fetch_sgdb_images_batch(self, appids: list) -> dict:
         """

@@ -28,6 +28,7 @@ const loadDemoCache = callable<[], Record<string, DemoInfo>>("load_demo_cache");
 const setSgdbApiKey = callable<[api_key: string], boolean>("set_sgdb_api_key");
 const getSgdbApiKey = callable<[], string>("get_sgdb_api_key");
 const fetchSgdbImagesBatch = callable<[appids: number[]], Record<string, string | null>>("fetch_sgdb_images_batch");
+const openUrlInBrowser = callable<[url: string], boolean>("open_url_in_browser");
 
 // ---- Types ----
 interface WishlistItem {
@@ -158,7 +159,7 @@ const fullPageActiveBtnStyle: React.CSSProperties = {
 
 const fullPageGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(242px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(266px, 1fr))",
   gap: "12px", padding: "16px 24px 24px 24px",
   overflowY: "auto", flex: 1,
   minHeight: 0,
@@ -174,7 +175,7 @@ const fullPageCardStyle: React.CSSProperties = {
 };
 
 const fullPageCardImgStyle: React.CSSProperties = {
-  width: "100%", height: "165px",
+  width: "100%", height: "182px",
   objectFit: "cover", display: "block",
   background: "rgba(0,0,0,0.3)",
 };
@@ -550,8 +551,12 @@ const SgdbKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey,
     setSaving(false);
   };
 
-  const openKeyPage = () => {
-    Navigation.NavigateToExternalWeb(SGDB_KEY_HELP_URL);
+  const openKeyPage = async () => {
+    try {
+      await openUrlInBrowser(SGDB_KEY_HELP_URL);
+    } catch (_e) {
+      Navigation.NavigateToExternalWeb(SGDB_KEY_HELP_URL);
+    }
     Navigation.CloseSideMenus();
   };
 
@@ -960,7 +965,7 @@ const FullPageWishlistWithDemos: FC = () => {
               <div
                 className="img-placeholder"
                 style={{
-                  display: "none", width: "100%", height: "165px",
+                  display: "none", width: "100%", height: "182px",
                   background: "linear-gradient(135deg, rgba(27,40,56,0.9) 0%, rgba(15,25,40,0.9) 100%)",
                   alignItems: "center", justifyContent: "center",
                   fontSize: "11px", color: "rgba(255,255,255,0.35)",
