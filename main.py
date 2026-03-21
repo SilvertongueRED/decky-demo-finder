@@ -394,9 +394,13 @@ class Plugin:
     async def set_api_key(self, api_key: str) -> bool:
         """Save the user's Steam Web API key to plugin settings."""
         try:
-            settings = _load_settings()
-            settings["steam_api_key"] = api_key.strip()
-            _save_settings(settings)
+            loop = asyncio.get_event_loop()
+            key = api_key.strip()
+            def _do_save() -> None:
+                settings = _load_settings()
+                settings["steam_api_key"] = key
+                _save_settings(settings)
+            await loop.run_in_executor(None, _do_save)
             decky.logger.info("Steam API key saved")
             return True
         except Exception as e:
@@ -405,15 +409,20 @@ class Plugin:
 
     async def get_api_key(self) -> str:
         """Load the user's Steam Web API key from plugin settings."""
-        settings = _load_settings()
+        loop = asyncio.get_event_loop()
+        settings = await loop.run_in_executor(None, _load_settings)
         return settings.get("steam_api_key", "")
 
     async def set_sgdb_api_key(self, api_key: str) -> bool:
         """Save the user's SteamGridDB API key to plugin settings."""
         try:
-            settings = _load_settings()
-            settings["sgdb_api_key"] = api_key.strip()
-            _save_settings(settings)
+            loop = asyncio.get_event_loop()
+            key = api_key.strip()
+            def _do_save() -> None:
+                settings = _load_settings()
+                settings["sgdb_api_key"] = key
+                _save_settings(settings)
+            await loop.run_in_executor(None, _do_save)
             decky.logger.info("SteamGridDB API key saved")
             return True
         except Exception as e:
@@ -422,7 +431,8 @@ class Plugin:
 
     async def get_sgdb_api_key(self) -> str:
         """Load the user's SteamGridDB API key from plugin settings."""
-        settings = _load_settings()
+        loop = asyncio.get_event_loop()
+        settings = await loop.run_in_executor(None, _load_settings)
         return settings.get("sgdb_api_key", "")
 
     async def open_url_in_browser(self, url: str) -> bool:
@@ -450,6 +460,10 @@ class Plugin:
         SteamOS so that at least one succeeds regardless of whether the
         session is Wayland or X11.
 
+        Uses ``asyncio.create_subprocess_exec`` so that the event loop
+        is never blocked — synchronous ``subprocess.run`` would stall
+        the Decky IPC and cause the frontend callable to time out.
+
         The Decky backend may not inherit the user's display-session
         environment variables, so we detect and inject ``DISPLAY``,
         ``WAYLAND_DISPLAY`` and ``XDG_RUNTIME_DIR`` when they are
@@ -462,17 +476,33 @@ class Plugin:
             ["xsel", "--clipboard", "--output"],
         ]:
             try:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=5,
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                     env=env,
                 )
-                if result.returncode == 0:
-                    return result.stdout.strip()
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(), timeout=3,
+                    )
+                except asyncio.TimeoutError:
+                    try:
+                        proc.kill()
+                    except OSError:
+                        pass
+                    await proc.wait()
+                    decky.logger.debug(
+                        f"read_clipboard: {cmd[0]} timed out"
+                    )
+                    continue
+                if proc.returncode == 0:
+                    return (stdout or b"").decode(errors="replace").strip()
                 decky.logger.debug(
-                    f"read_clipboard: {cmd[0]} exited {result.returncode}: "
-                    f"{result.stderr.strip()}"
+                    f"read_clipboard: {cmd[0]} exited {proc.returncode}: "
+                    f"{(stderr or b"").decode(errors="replace").strip()}"
                 )
-            except (FileNotFoundError, subprocess.TimeoutExpired):
+            except FileNotFoundError:
                 continue
             except Exception as e:
                 decky.logger.warning(f"read_clipboard: {cmd[0]} failed: {e}")
