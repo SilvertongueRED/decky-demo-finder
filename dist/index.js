@@ -253,6 +253,7 @@ let cachedHasScanned = false;
 let cachedFilterDemoOnly = false;
 let cachedDemoResults = {};
 let cachedDemoCacheLoaded = false;
+let cachedSortBy = "alpha";
 // ---- Helpers ----
 function getSteamId() {
     try {
@@ -481,12 +482,13 @@ const FullPageWishlistWithDemos = () => {
     const [filterDemoOnly, setFilterDemoOnly] = SP_REACT.useState(cachedFilterDemoOnly);
     const [scanning, setScanning] = SP_REACT.useState(false);
     const [scanProgress, setScanProgress] = SP_REACT.useState("");
-    const [sortBy, setSortBy] = SP_REACT.useState("alpha");
+    const [sortBy, setSortBy] = SP_REACT.useState(cachedSortBy);
     const [page, setPage] = SP_REACT.useState(0);
     // Sync back to module-level cache
     SP_REACT.useEffect(() => { cachedWishlist = wishlist; }, [wishlist]);
     SP_REACT.useEffect(() => { cachedHasScanned = hasScanned; }, [hasScanned]);
     SP_REACT.useEffect(() => { cachedFilterDemoOnly = filterDemoOnly; }, [filterDemoOnly]);
+    SP_REACT.useEffect(() => { cachedSortBy = sortBy; }, [sortBy]);
     const parseSteamDate = (d) => {
         const ts = Date.parse(d);
         return isNaN(ts) ? Infinity : ts;
@@ -506,7 +508,7 @@ const FullPageWishlistWithDemos = () => {
             sorted.sort((a, b) => {
                 const da = a.demoInfo?.release_date ? parseSteamDate(a.demoInfo.release_date) : Infinity;
                 const db = b.demoInfo?.release_date ? parseSteamDate(b.demoInfo.release_date) : Infinity;
-                return da - db;
+                return db - da;
             });
         }
         return sorted;
@@ -604,13 +606,25 @@ const FullPageWishlistWithDemos = () => {
             toaster.toast({ title: "Demo Finder", body: `Opening demo for ${gameName}` });
         }
     };
-    return (SP_JSX.jsxs("div", { style: fullPageStyle, children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs("div", { style: fullPageHeaderStyle, children: [SP_JSX.jsxs("div", { style: fullPageTitleStyle, children: [SP_JSX.jsx(FaGamepad, { size: 22 }), " Demo Finder", wishlist.length > 0 && (SP_JSX.jsxs("span", { style: { fontSize: "14px", fontWeight: "normal", color: "rgba(255,255,255,0.5)" }, children: ["\u2014 ", wishlist.length, " games", hasScanned && `, ${demosFoundCount} with demos`] }))] }), wishlist.length > 0 && (SP_JSX.jsxs(DFL.Focusable, { style: fullPageButtonGroupStyle, "flow-children": "horizontal", children: [SP_JSX.jsx(DFL.Focusable, { onActivate: cycleSortMode, children: SP_JSX.jsxs("div", { style: fullPageBtnStyle, onClick: cycleSortMode, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 12, style: { marginRight: "6px" } }), sortLabel[sortBy]] }) }), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.Focusable, { onActivate: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: SP_JSX.jsx("div", { style: filterDemoOnly ? fullPageActiveBtnStyle : fullPageBtnStyle, onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `🎮 Demos Only (${demosFoundCount})` : `All Games (${wishlist.length})` }) })), SP_JSX.jsx(DFL.Focusable, { onActivate: scanning ? undefined : scanForDemos, children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: scanning ? 0.6 : 1 }, onClick: scanning ? undefined : scanForDemos, children: [SP_JSX.jsx(FaSearch, { size: 12, style: { marginRight: "6px" } }), scanning ? scanProgress || "Scanning..." : hasScanned ? "Re-scan" : `Scan ${wishlist.length} Games`] }) })] }))] }), wishlist.length === 0 ? (SP_JSX.jsxs("div", { style: fullPageStatusStyle, children: [SP_JSX.jsx("div", { style: { fontSize: "18px", marginBottom: "8px" }, children: "\uD83C\uDFAE" }), SP_JSX.jsx("div", { children: "No wishlist loaded." }), SP_JSX.jsx("div", { style: { fontSize: "12px", marginTop: "8px", color: "rgba(255,255,255,0.4)" }, children: "Open the Demo Finder in the Quick Access menu (\u2630) to load your wishlist." })] })) : (SP_JSX.jsxs(DFL.Focusable, { style: fullPageGridStyle, "flow-children": "grid", children: [scanning && (SP_JSX.jsx("div", { style: fullPageStatusStyle, children: scanProgress || "Scanning for demos..." })), !scanning && pagedItems.map((item) => (SP_JSX.jsxs(DFL.Focusable, { style: fullPageCardStyle, focusWithinClassName: "demo-finder-card-focus", onActivate: () => openGame(item.appid, item.name), children: [SP_JSX.jsx("img", { src: `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/header.jpg`, alt: item.name, style: fullPageCardImgStyle, onError: (e) => {
+    return (SP_JSX.jsxs("div", { style: fullPageStyle, children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs("div", { style: fullPageHeaderStyle, children: [SP_JSX.jsxs("div", { style: fullPageTitleStyle, children: [SP_JSX.jsx(FaGamepad, { size: 22 }), " Demo Finder", wishlist.length > 0 && (SP_JSX.jsxs("span", { style: { fontSize: "14px", fontWeight: "normal", color: "rgba(255,255,255,0.5)" }, children: ["\u2014 ", wishlist.length, " games", hasScanned && `, ${demosFoundCount} with demos`] }))] }), wishlist.length > 0 && (SP_JSX.jsxs(DFL.Focusable, { style: fullPageButtonGroupStyle, "flow-children": "horizontal", children: [SP_JSX.jsx(DFL.Focusable, { onActivate: cycleSortMode, children: SP_JSX.jsxs("div", { style: fullPageBtnStyle, onClick: cycleSortMode, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 12, style: { marginRight: "6px" } }), sortLabel[sortBy]] }) }), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.Focusable, { onActivate: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: SP_JSX.jsx("div", { style: filterDemoOnly ? fullPageActiveBtnStyle : fullPageBtnStyle, onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `🎮 Demos Only (${demosFoundCount})` : `All Games (${wishlist.length})` }) })), SP_JSX.jsx(DFL.Focusable, { onActivate: scanning ? undefined : scanForDemos, children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: scanning ? 0.6 : 1 }, onClick: scanning ? undefined : scanForDemos, children: [SP_JSX.jsx(FaSearch, { size: 12, style: { marginRight: "6px" } }), scanning ? scanProgress || "Scanning..." : hasScanned ? "Re-scan" : `Scan ${wishlist.length} Games`] }) })] }))] }), wishlist.length === 0 ? (SP_JSX.jsxs("div", { style: fullPageStatusStyle, children: [SP_JSX.jsx("div", { style: { fontSize: "18px", marginBottom: "8px" }, children: "\uD83C\uDFAE" }), SP_JSX.jsx("div", { children: "No wishlist loaded." }), SP_JSX.jsx("div", { style: { fontSize: "12px", marginTop: "8px", color: "rgba(255,255,255,0.4)" }, children: "Open the Demo Finder in the Quick Access menu (\u2630) to load your wishlist." })] })) : (SP_JSX.jsxs(DFL.Focusable, { style: fullPageGridStyle, "flow-children": "grid", children: [scanning && (SP_JSX.jsx("div", { style: fullPageStatusStyle, children: scanProgress || "Scanning for demos..." })), !scanning && pagedItems.map((item) => (SP_JSX.jsxs(DFL.Focusable, { style: fullPageCardStyle, focusWithinClassName: "demo-finder-card-focus", onActivate: () => openGame(item.appid, item.name), children: [SP_JSX.jsx("img", { src: item.demoInfo?.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/header.jpg`, alt: item.name, style: fullPageCardImgStyle, onError: (e) => {
                                     const img = e.currentTarget;
-                                    if (img.src.includes("header.jpg")) {
-                                        img.src = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/capsule_616x353.jpg`;
+                                    const cdnBase = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/`;
+                                    const sharedBase = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${item.appid}/`;
+                                    if (!img.src.includes(cdnBase) && !img.src.includes(sharedBase)) {
+                                        // header_image from API failed – try CDN header.jpg
+                                        img.src = `${cdnBase}header.jpg`;
+                                    }
+                                    else if (img.src.includes("header.jpg") && img.src.includes(cdnBase)) {
+                                        img.src = `${cdnBase}capsule_616x353.jpg`;
                                     }
                                     else if (img.src.includes("capsule_616x353.jpg")) {
-                                        img.src = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/capsule_231x87.jpg`;
+                                        img.src = `${cdnBase}library_600x900.jpg`;
+                                    }
+                                    else if (img.src.includes("library_600x900.jpg")) {
+                                        img.src = `${cdnBase}capsule_231x87.jpg`;
+                                    }
+                                    else if (img.src.includes("capsule_231x87.jpg")) {
+                                        img.src = `${sharedBase}header.jpg`;
                                     }
                                     else {
                                         // All image URLs failed – hide the broken image and show the alt text background
@@ -641,7 +655,7 @@ function Content() {
     const [hasScanned, setHasScanned] = SP_REACT.useState(cachedHasScanned);
     const [hasApiKey, setHasApiKey] = SP_REACT.useState(false);
     const [showSetup, setShowSetup] = SP_REACT.useState(false);
-    const [sortBy, setSortBy] = SP_REACT.useState("alpha");
+    const [sortBy, setSortBy] = SP_REACT.useState(cachedSortBy);
     const [optionsCollapsed, setOptionsCollapsed] = SP_REACT.useState(false);
     const checkApiKey = SP_REACT.useCallback(async () => {
         try {
@@ -658,6 +672,7 @@ function Content() {
     SP_REACT.useEffect(() => { cachedWishlist = wishlist; }, [wishlist]);
     SP_REACT.useEffect(() => { cachedHasScanned = hasScanned; }, [hasScanned]);
     SP_REACT.useEffect(() => { cachedFilterDemoOnly = filterDemoOnly; }, [filterDemoOnly]);
+    SP_REACT.useEffect(() => { cachedSortBy = sortBy; }, [sortBy]);
     // Ref to the latest scanForDemos so loadWishlist can call it without stale closure
     const scanForDemosRef = SP_REACT.useRef(null);
     const scanForDemos = SP_REACT.useCallback(async (itemsParam) => {
@@ -905,11 +920,10 @@ function Content() {
         });
         setPage(0);
     };
-    // Label shown on the button describes the *next* sort action (what clicking will do)
     const sortLabel = {
-        alpha: "Date Added",
-        date_added: "Release Date",
-        release_date: "A → Z",
+        alpha: "A → Z",
+        date_added: "Date Added",
+        release_date: "Release Date",
     };
     const parseSteamDate = (d) => {
         // Steam dates look like "Mar 14, 2026" or "Q1 2026" or "Coming Soon" etc.
@@ -931,7 +945,7 @@ function Content() {
             sorted.sort((a, b) => {
                 const da = a.demoInfo?.release_date ? parseSteamDate(a.demoInfo.release_date) : Infinity;
                 const db = b.demoInfo?.release_date ? parseSteamDate(b.demoInfo.release_date) : Infinity;
-                return da - db;
+                return db - da;
             });
         }
         return sorted;

@@ -40,6 +40,7 @@ interface DemoInfo {
   app_url: string;
   release_date?: string | null;
   name?: string | null;
+  header_image?: string | null;
   definitive?: boolean;
 }
 
@@ -219,6 +220,7 @@ let cachedHasScanned = false;
 let cachedFilterDemoOnly = false;
 let cachedDemoResults: Record<string, DemoInfo> = {};
 let cachedDemoCacheLoaded = false;
+let cachedSortBy: SortMode = "alpha";
 
 // ---- Helpers ----
 function getSteamId(): string {
@@ -505,13 +507,14 @@ const FullPageWishlistWithDemos: FC = () => {
   const [filterDemoOnly, setFilterDemoOnly] = useState(cachedFilterDemoOnly);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState("");
-  const [sortBy, setSortBy] = useState<SortMode>("alpha");
+  const [sortBy, setSortBy] = useState<SortMode>(cachedSortBy);
   const [page, setPage] = useState(0);
 
   // Sync back to module-level cache
   useEffect(() => { cachedWishlist = wishlist; }, [wishlist]);
   useEffect(() => { cachedHasScanned = hasScanned; }, [hasScanned]);
   useEffect(() => { cachedFilterDemoOnly = filterDemoOnly; }, [filterDemoOnly]);
+  useEffect(() => { cachedSortBy = sortBy; }, [sortBy]);
 
   const parseSteamDate = (d: string): number => {
     const ts = Date.parse(d);
@@ -531,7 +534,7 @@ const FullPageWishlistWithDemos: FC = () => {
       sorted.sort((a, b) => {
         const da = a.demoInfo?.release_date ? parseSteamDate(a.demoInfo.release_date) : Infinity;
         const db = b.demoInfo?.release_date ? parseSteamDate(b.demoInfo.release_date) : Infinity;
-        return da - db;
+        return db - da;
       });
     }
     return sorted;
@@ -718,15 +721,24 @@ const FullPageWishlistWithDemos: FC = () => {
               onActivate={() => openGame(item.appid, item.name)}
             >
               <img
-                src={`https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/header.jpg`}
+                src={item.demoInfo?.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/header.jpg`}
                 alt={item.name}
                 style={fullPageCardImgStyle}
                 onError={(e) => {
                   const img = e.currentTarget as HTMLImageElement;
-                  if (img.src.includes("header.jpg")) {
-                    img.src = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/capsule_616x353.jpg`;
+                  const cdnBase = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/`;
+                  const sharedBase = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${item.appid}/`;
+                  if (!img.src.includes(cdnBase) && !img.src.includes(sharedBase)) {
+                    // header_image from API failed – try CDN header.jpg
+                    img.src = `${cdnBase}header.jpg`;
+                  } else if (img.src.includes("header.jpg") && img.src.includes(cdnBase)) {
+                    img.src = `${cdnBase}capsule_616x353.jpg`;
                   } else if (img.src.includes("capsule_616x353.jpg")) {
-                    img.src = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/capsule_231x87.jpg`;
+                    img.src = `${cdnBase}library_600x900.jpg`;
+                  } else if (img.src.includes("library_600x900.jpg")) {
+                    img.src = `${cdnBase}capsule_231x87.jpg`;
+                  } else if (img.src.includes("capsule_231x87.jpg")) {
+                    img.src = `${sharedBase}header.jpg`;
                   } else {
                     // All image URLs failed – hide the broken image and show the alt text background
                     img.style.display = "none";
@@ -821,7 +833,7 @@ function Content() {
   const [hasScanned, setHasScanned] = useState(cachedHasScanned);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
-  const [sortBy, setSortBy] = useState<SortMode>("alpha");
+  const [sortBy, setSortBy] = useState<SortMode>(cachedSortBy);
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
 
   const checkApiKey = useCallback(async () => {
@@ -839,6 +851,7 @@ function Content() {
   useEffect(() => { cachedWishlist = wishlist; }, [wishlist]);
   useEffect(() => { cachedHasScanned = hasScanned; }, [hasScanned]);
   useEffect(() => { cachedFilterDemoOnly = filterDemoOnly; }, [filterDemoOnly]);
+  useEffect(() => { cachedSortBy = sortBy; }, [sortBy]);
 
   // Ref to the latest scanForDemos so loadWishlist can call it without stale closure
   const scanForDemosRef = useRef<((items: WishlistItemWithDemo[]) => Promise<void>) | null>(null);
@@ -1101,11 +1114,10 @@ function Content() {
     setPage(0);
   };
 
-  // Label shown on the button describes the *next* sort action (what clicking will do)
   const sortLabel: Record<SortMode, string> = {
-    alpha: "Date Added",
-    date_added: "Release Date",
-    release_date: "A → Z",
+    alpha: "A → Z",
+    date_added: "Date Added",
+    release_date: "Release Date",
   };
 
   const parseSteamDate = (d: string): number => {
@@ -1127,7 +1139,7 @@ function Content() {
       sorted.sort((a, b) => {
         const da = a.demoInfo?.release_date ? parseSteamDate(a.demoInfo.release_date) : Infinity;
         const db = b.demoInfo?.release_date ? parseSteamDate(b.demoInfo.release_date) : Infinity;
-        return da - db;
+        return db - da;
       });
     }
     return sorted;

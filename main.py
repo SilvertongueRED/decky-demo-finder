@@ -766,6 +766,7 @@ class Plugin:
             "demo_url": None,
             "app_url": f"https://store.steampowered.com/app/{appid}/",
             "release_date": None,
+            "header_image": None,
         }
 
         try:
@@ -784,6 +785,11 @@ class Plugin:
                         return result
 
                     details = app_data.get("data", {})
+
+                    # Extract header image URL
+                    header_image = details.get("header_image")
+                    if header_image:
+                        result["header_image"] = header_image
 
                     # Extract release date
                     rd = details.get("release_date", {})
@@ -834,6 +840,7 @@ class Plugin:
             "app_url": f"https://store.steampowered.com/app/{appid}/",
             "release_date": None,
             "name": None,
+            "header_image": None,
             "definitive": False,
         }
         req_timeout = aiohttp.ClientTimeout(total=15)
@@ -899,6 +906,11 @@ class Plugin:
                                 name = details.get("name")
                                 if name:
                                     result["name"] = name
+
+                                # Extract header image URL
+                                header_image = details.get("header_image")
+                                if header_image:
+                                    result["header_image"] = header_image
 
                                 rd = details.get("release_date", {})
                                 if rd and rd.get("date"):
