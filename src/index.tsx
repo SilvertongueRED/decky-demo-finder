@@ -154,7 +154,7 @@ const fullPageActiveBtnStyle: React.CSSProperties = {
 
 const fullPageGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
   gap: "12px", padding: "16px 24px 24px 24px",
   overflowY: "auto", flex: 1,
   minHeight: 0,
@@ -204,6 +204,7 @@ const fullPageStatusStyle: React.CSSProperties = {
 const fullPagePaginationStyle: React.CSSProperties = {
   display: "flex", justifyContent: "center", alignItems: "center",
   gap: "16px", padding: "16px 12px", marginTop: "12px",
+  marginBottom: "16px",
   borderTop: "1px solid rgba(255,255,255,0.1)",
   flexShrink: 0,
 };
