@@ -109,11 +109,15 @@ const getApiKey = callable("get_api_key");
 const resolveNamesBatch = callable("resolve_names_batch");
 const saveDemoCache = callable("save_demo_cache");
 const loadDemoCache = callable("load_demo_cache");
+const setSgdbApiKey = callable("set_sgdb_api_key");
+const getSgdbApiKey = callable("get_sgdb_api_key");
+const fetchSgdbImagesBatch = callable("fetch_sgdb_images_batch");
 const BATCH_SIZE = 50;
 const ITEMS_PER_PAGE = 20;
 // Maximum pages to paginate through wishlistdata (100 items/page → 2 000 items max)
 const MAX_WISHLIST_PAGES = 20;
 const API_KEY_HELP_URL = "https://steamcommunity.com/dev/apikey";
+const SGDB_KEY_HELP_URL = "https://www.steamgriddb.com/profile/preferences/api";
 // ---- Styles ----
 const containerStyle = {
     display: "flex", flexDirection: "column", gap: "4px",
@@ -197,7 +201,7 @@ const fullPageActiveBtnStyle = {
 };
 const fullPageGridStyle = {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(242px, 1fr))",
     gap: "12px", padding: "16px 24px 24px 24px",
     overflowY: "auto", flex: 1,
     minHeight: 0,
@@ -211,7 +215,7 @@ const fullPageCardStyle = {
     display: "flex", flexDirection: "column",
 };
 const fullPageCardImgStyle = {
-    width: "100%", height: "150px",
+    width: "100%", height: "165px",
     objectFit: "cover", display: "block",
     background: "rgba(0,0,0,0.3)",
 };
@@ -257,6 +261,8 @@ let cachedDemoCacheLoaded = false;
 let cachedSortBy = "alpha";
 /** Capsule / header image URLs harvested from Steam wishlistdata. */
 let capsuleImageCache = {};
+/** SteamGridDB artwork URLs cached in memory (appid → URL). */
+let sgdbImageCache = {};
 // ---- Helpers ----
 function getSteamId() {
     try {
@@ -484,6 +490,49 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
     return (SP_JSX.jsxs(DFL.PanelSection, { title: "Steam API Key Setup", children: [SP_JSX.jsx("div", { style: helpTextStyle, children: hasKey
                     ? "✅ API key is configured. You can update it below if needed."
                     : "⚠️ A Steam Web API key is required to access your wishlist. It's free to register." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { ref: fieldRef, children: SP_JSX.jsx(DFL.TextField, { label: "Steam Web API Key", value: keyInput, onChange: (e) => setKeyInput(e?.target?.value ?? ""), bIsPassword: true }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save API Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Go to steamcommunity.com/dev/apikey to register a key. Enter any domain name (e.g. \"localhost\"). Your wishlist must also be set to Public." })] }));
+};
+// ---- SteamGridDB API Key Setup ----
+const SgdbKeySetup = ({ hasKey, onKeySaved }) => {
+    const [keyInput, setKeyInput] = SP_REACT.useState("");
+    const [saving, setSaving] = SP_REACT.useState(false);
+    const fieldRef = SP_REACT.useRef(null);
+    const getInputValue = () => {
+        if (keyInput.trim())
+            return keyInput.trim();
+        try {
+            const el = fieldRef.current?.querySelector("input");
+            if (el?.value?.trim())
+                return el.value.trim();
+        }
+        catch (_e) { /* ignore */ }
+        return "";
+    };
+    const handleSave = async () => {
+        const value = getInputValue();
+        if (!value) {
+            toaster.toast({ title: "Demo Finder", body: "Please enter a SteamGridDB API key first." });
+            return;
+        }
+        setSaving(true);
+        try {
+            await setSgdbApiKey(value);
+            toaster.toast({ title: "Demo Finder", body: "SteamGridDB API key saved!" });
+            setKeyInput("");
+            onKeySaved();
+        }
+        catch (e) {
+            console.error("[Demo Finder] Failed to save SGDB API key:", e);
+            toaster.toast({ title: "Demo Finder", body: "Failed to save SteamGridDB API key." });
+        }
+        setSaving(false);
+    };
+    const openKeyPage = () => {
+        DFL.Navigation.NavigateToExternalWeb(SGDB_KEY_HELP_URL);
+        DFL.Navigation.CloseSideMenus();
+    };
+    return (SP_JSX.jsxs(DFL.PanelSection, { title: "SteamGridDB API Key", children: [SP_JSX.jsx("div", { style: helpTextStyle, children: hasKey
+                    ? "✅ SteamGridDB key configured. Missing artwork will use SGDB as a fallback."
+                    : "⚠️ Optional: Provide a SteamGridDB API key to fill in missing game artwork." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free SGDB API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { ref: fieldRef, children: SP_JSX.jsx(DFL.TextField, { label: "SteamGridDB API Key", value: keyInput, onChange: (e) => setKeyInput(e?.target?.value ?? ""), bIsPassword: true }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save SGDB Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Free key available at steamgriddb.com \u2014 provides artwork for games missing images on Steam." })] }));
 };
 function detectControllerType(id) {
     const lower = id.toLowerCase();
@@ -720,14 +769,39 @@ const FullPageWishlistWithDemos = () => {
                                         img.src = fallbacks[next];
                                     }
                                     else {
-                                        // All image URLs exhausted – show placeholder
-                                        img.style.display = "none";
-                                        const placeholder = img.parentElement?.querySelector(".img-placeholder");
-                                        if (placeholder)
-                                            placeholder.style.display = "flex";
+                                        // All Steam CDN URLs exhausted — try SteamGridDB next
+                                        const appidStr = String(item.appid);
+                                        const showPlaceholder = () => {
+                                            img.style.display = "none";
+                                            const placeholder = img.parentElement?.querySelector(".img-placeholder");
+                                            if (placeholder)
+                                                placeholder.style.display = "flex";
+                                        };
+                                        if (sgdbImageCache[appidStr]) {
+                                            img.src = sgdbImageCache[appidStr];
+                                        }
+                                        else {
+                                            getSgdbApiKey().then((key) => {
+                                                if (!key) {
+                                                    showPlaceholder();
+                                                    return;
+                                                }
+                                                fetchSgdbImagesBatch([item.appid]).then((res) => {
+                                                    const url = res?.[appidStr];
+                                                    if (url) {
+                                                        sgdbImageCache[appidStr] = url;
+                                                        img.src = url;
+                                                    }
+                                                    else {
+                                                        sgdbImageCache[appidStr] = "";
+                                                        showPlaceholder();
+                                                    }
+                                                }).catch(() => showPlaceholder());
+                                            }).catch(() => showPlaceholder());
+                                        }
                                     }
                                 } }), SP_JSX.jsx("div", { className: "img-placeholder", style: {
-                                    display: "none", width: "100%", height: "150px",
+                                    display: "none", width: "100%", height: "165px",
                                     background: "linear-gradient(135deg, rgba(27,40,56,0.9) 0%, rgba(15,25,40,0.9) 100%)",
                                     alignItems: "center", justifyContent: "center",
                                     fontSize: "11px", color: "rgba(255,255,255,0.35)",
@@ -748,6 +822,8 @@ function Content() {
     const [hasScanned, setHasScanned] = SP_REACT.useState(cachedHasScanned);
     const [hasApiKey, setHasApiKey] = SP_REACT.useState(false);
     const [showSetup, setShowSetup] = SP_REACT.useState(false);
+    const [hasSgdbKey, setHasSgdbKey] = SP_REACT.useState(false);
+    const [showSgdbSetup, setShowSgdbSetup] = SP_REACT.useState(false);
     const [sortBy, setSortBy] = SP_REACT.useState(cachedSortBy);
     const [optionsCollapsed, setOptionsCollapsed] = SP_REACT.useState(false);
     const bumperLabels = useControllerLabels();
@@ -759,6 +835,17 @@ function Content() {
         }
         catch {
             setHasApiKey(false);
+            return false;
+        }
+    }, []);
+    const checkSgdbApiKey = SP_REACT.useCallback(async () => {
+        try {
+            const key = await getSgdbApiKey();
+            setHasSgdbKey(!!key);
+            return !!key;
+        }
+        catch {
+            setHasSgdbKey(false);
             return false;
         }
     }, []);
@@ -997,12 +1084,17 @@ function Content() {
                 loadWishlist();
             }
         });
-    }, [checkApiKey, loadWishlist]);
+        checkSgdbApiKey();
+    }, [checkApiKey, checkSgdbApiKey, loadWishlist]);
     const handleKeySaved = () => {
         setHasApiKey(true);
         setShowSetup(false);
         setError(null);
         loadWishlist();
+    };
+    const handleSgdbKeySaved = () => {
+        setHasSgdbKey(true);
+        setShowSgdbSetup(false);
     };
     const cycleSortMode = () => {
         setSortBy((prev) => {
@@ -1052,7 +1144,7 @@ function Content() {
     const openFullPage = () => {
         DFL.Navigation.Navigate("/demo-finder-wishlist");
     };
-    return (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs(DFL.PanelSection, { title: "Wishlist Demo Finder", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openFullPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaGamepad, { size: 14 }), " Open Full Wishlist View"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setOptionsCollapsed(!optionsCollapsed), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [optionsCollapsed ? SP_JSX.jsx(FaChevronDown, { size: 12 }) : SP_JSX.jsx(FaChevronUp, { size: 12 }), optionsCollapsed ? "Show Options" : "Hide Options"] }) }) }), !optionsCollapsed && (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: loadWishlist, disabled: loading || scanning, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSyncAlt, { size: 14 }), loading ? "Loading..." : "Refresh Wishlist"] }) }) }), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => scanForDemos(), disabled: scanning || loading, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSearch, { size: 14 }), scanning ? "Scanning..." : hasScanned ? `Re-scan ${wishlist.length} Games` : `Scan ${wishlist.length} Games for Demos`] }) }) })), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `Show All (${wishlist.length})` : `Show Only Demos (${demosFoundCount})` }) })), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: cycleSortMode, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 14 }), "Sort: ", sortLabel[sortBy]] }) }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowSetup(!showSetup), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), showSetup ? "Hide Setup" : (hasApiKey ? "Update API Key" : "⚠️ Set Up API Key")] }) }) })] }))] }), error && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: { ...statusStyle, color: "#ff6b6b" }, children: error }) })), showSetup && (SP_JSX.jsx(ApiKeySetup, { hasKey: hasApiKey, onKeySaved: handleKeySaved })), scanning && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: scanProgress }) })), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Loading wishlist..." }) })), resolvingNames && !loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Resolving game names..." }) })), !loading && wishlist.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: filterDemoOnly ? `Demos (${demosFoundCount})` : `Wishlist (${displayItems.length})`, children: [SP_JSX.jsx("div", { style: containerStyle, children: pagedItems.map((item) => (SP_JSX.jsxs(DFL.Focusable, { style: itemContainerStyle, focusWithinClassName: "demo-finder-item-focus", children: [SP_JSX.jsx("div", { style: gameNameStyle, title: item.name, children: item.name }), SP_JSX.jsxs("div", { style: { display: "flex", gap: "4px", alignItems: "center" }, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsx(DemoButton, { demoInfo: item.demoInfo, gameName: item.name })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" }))) : hasScanned ? (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "\u2014" })), SP_JSX.jsx(GameStoreLinkButton, { appid: item.appid, gameName: item.name })] })] }, item.appid))) }), totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { display: "flex", justifyContent: "center", gap: "12px", padding: "8px 0 12px 0" }, children: [SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.max(0, page - 1)), style: { ...pageBtnStyle, opacity: page === 0 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.max(0, page - 1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "12px", alignSelf: "center" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.min(totalPages - 1, page + 1)), style: { ...pageBtnStyle, opacity: page >= totalPages - 1 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.min(totalPages - 1, page + 1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
+    return (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs(DFL.PanelSection, { title: "Wishlist Demo Finder", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openFullPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaGamepad, { size: 14 }), " Open Full Wishlist View"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setOptionsCollapsed(!optionsCollapsed), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [optionsCollapsed ? SP_JSX.jsx(FaChevronDown, { size: 12 }) : SP_JSX.jsx(FaChevronUp, { size: 12 }), optionsCollapsed ? "Show Options" : "Hide Options"] }) }) }), !optionsCollapsed && (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: loadWishlist, disabled: loading || scanning, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSyncAlt, { size: 14 }), loading ? "Loading..." : "Refresh Wishlist"] }) }) }), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => scanForDemos(), disabled: scanning || loading, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSearch, { size: 14 }), scanning ? "Scanning..." : hasScanned ? `Re-scan ${wishlist.length} Games` : `Scan ${wishlist.length} Games for Demos`] }) }) })), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `Show All (${wishlist.length})` : `Show Only Demos (${demosFoundCount})` }) })), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: cycleSortMode, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 14 }), "Sort: ", sortLabel[sortBy]] }) }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowSetup(!showSetup), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), showSetup ? "Hide Setup" : (hasApiKey ? "Update API Key" : "⚠️ Set Up API Key")] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowSgdbSetup(!showSgdbSetup), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), showSgdbSetup ? "Hide SGDB Setup" : (hasSgdbKey ? "Update SGDB Key" : "Set Up SGDB Artwork Key")] }) }) })] }))] }), error && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: { ...statusStyle, color: "#ff6b6b" }, children: error }) })), showSetup && (SP_JSX.jsx(ApiKeySetup, { hasKey: hasApiKey, onKeySaved: handleKeySaved })), showSgdbSetup && (SP_JSX.jsx(SgdbKeySetup, { hasKey: hasSgdbKey, onKeySaved: handleSgdbKeySaved })), scanning && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: scanProgress }) })), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Loading wishlist..." }) })), resolvingNames && !loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Resolving game names..." }) })), !loading && wishlist.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: filterDemoOnly ? `Demos (${demosFoundCount})` : `Wishlist (${displayItems.length})`, children: [SP_JSX.jsx("div", { style: containerStyle, children: pagedItems.map((item) => (SP_JSX.jsxs(DFL.Focusable, { style: itemContainerStyle, focusWithinClassName: "demo-finder-item-focus", children: [SP_JSX.jsx("div", { style: gameNameStyle, title: item.name, children: item.name }), SP_JSX.jsxs("div", { style: { display: "flex", gap: "4px", alignItems: "center" }, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsx(DemoButton, { demoInfo: item.demoInfo, gameName: item.name })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" }))) : hasScanned ? (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "\u2014" })), SP_JSX.jsx(GameStoreLinkButton, { appid: item.appid, gameName: item.name })] })] }, item.appid))) }), totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { display: "flex", justifyContent: "center", gap: "12px", padding: "8px 0 12px 0" }, children: [SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.max(0, page - 1)), style: { ...pageBtnStyle, opacity: page === 0 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.max(0, page - 1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "12px", alignSelf: "center" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.min(totalPages - 1, page + 1)), style: { ...pageBtnStyle, opacity: page >= totalPages - 1 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.min(totalPages - 1, page + 1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
 }
 // ---- Plugin Registration ----
 var index = definePlugin(() => {
