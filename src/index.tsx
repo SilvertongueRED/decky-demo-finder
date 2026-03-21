@@ -184,6 +184,7 @@ const fullPageCardImgStyle: React.CSSProperties = {
 const fullPageCardBodyStyle: React.CSSProperties = {
   padding: "8px", flex: 1,
   display: "flex", flexDirection: "column", gap: "6px",
+  marginTop: "-10%",
 };
 
 const fullPageCardNameStyle: React.CSSProperties = {
