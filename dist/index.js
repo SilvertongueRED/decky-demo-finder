@@ -227,6 +227,7 @@ const fullPageCardImgStyle = {
 const fullPageCardBodyStyle = {
     padding: "8px", flex: 1,
     display: "flex", flexDirection: "column", gap: "6px",
+    marginTop: "-10%",
 };
 const fullPageCardNameStyle = {
     fontSize: "12px", fontWeight: "bold",
