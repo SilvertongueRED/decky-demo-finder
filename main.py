@@ -134,6 +134,9 @@ class Plugin:
     _V1_MAX_RESULTS = 50000   # items per page (Steam's documented max)
     _V1_MAX_PAGES = 200       # safety cap (~10 M apps at 50 k/page)
 
+    # SteamGridDB in-memory image URL cache: { appid (str): url (str) }
+    _sgdb_image_cache: dict = {}
+
     # ---- App-name resolution ----
 
     async def _ensure_app_names_loaded(self, session, api_key: str = ""):
@@ -389,6 +392,106 @@ class Plugin:
         """Load the user's Steam Web API key from plugin settings."""
         settings = _load_settings()
         return settings.get("steam_api_key", "")
+
+    async def set_sgdb_api_key(self, api_key: str) -> bool:
+        """Save the user's SteamGridDB API key to plugin settings."""
+        try:
+            settings = _load_settings()
+            settings["sgdb_api_key"] = api_key.strip()
+            _save_settings(settings)
+            decky.logger.info("SteamGridDB API key saved")
+            return True
+        except Exception as e:
+            decky.logger.error(f"set_sgdb_api_key failed: {e}")
+            raise
+
+    async def get_sgdb_api_key(self) -> str:
+        """Load the user's SteamGridDB API key from plugin settings."""
+        settings = _load_settings()
+        return settings.get("sgdb_api_key", "")
+
+    async def fetch_sgdb_images_batch(self, appids: list) -> dict:
+        """
+        Fetch artwork URLs from SteamGridDB for a list of Steam AppIDs.
+        Returns a dict mapping appid (string) → image URL (string or None).
+        Uses an in-memory cache to avoid redundant API calls.
+        """
+        sgdb_api_key = (await self.get_sgdb_api_key()).strip()
+        if not sgdb_api_key:
+            decky.logger.warning("fetch_sgdb_images_batch: no SGDB API key configured")
+            return {}
+
+        results: dict = {}
+        to_fetch = []
+        for appid in appids:
+            key = str(appid)
+            if key in Plugin._sgdb_image_cache:
+                results[key] = Plugin._sgdb_image_cache[key]
+            else:
+                to_fetch.append(appid)
+
+        if not to_fetch:
+            return results
+
+        semaphore = asyncio.Semaphore(4)
+        headers = dict(_DEFAULT_HEADERS)
+        headers["Authorization"] = f"Bearer {sgdb_api_key}"
+
+        async def _fetch_one(appid):
+            url = f"https://www.steamgriddb.com/api/v2/grids/steam/{appid}"
+            async with semaphore:
+                for attempt in range(4):
+                    try:
+                        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                            if resp.status == 429 or resp.status >= 500:
+                                wait = min(2.0 * (2 ** attempt) + random.uniform(0, 1.0), 10.0)
+                                decky.logger.warning(
+                                    f"SGDB: status {resp.status} for {appid}, "
+                                    f"retrying in {wait:.1f}s (attempt {attempt + 1}/4)"
+                                )
+                                await asyncio.sleep(wait)
+                                continue
+                            if resp.status == 401 or resp.status == 403:
+                                decky.logger.warning(
+                                    f"SGDB: auth error {resp.status} — check your API key"
+                                )
+                                return str(appid), None
+                            if resp.status == 404:
+                                # No entry for this game on SGDB
+                                return str(appid), None
+                            if resp.status != 200:
+                                decky.logger.warning(
+                                    f"SGDB: unexpected status {resp.status} for {appid}"
+                                )
+                                return str(appid), None
+                            data = await resp.json(content_type=None)
+                            grid_data = data.get("data", [])
+                            if grid_data:
+                                url_val = grid_data[0].get("url")
+                                return str(appid), url_val
+                            return str(appid), None
+                    except Exception as e:
+                        decky.logger.warning(
+                            f"SGDB fetch failed for {appid} (attempt {attempt + 1}/4): {e}"
+                        )
+                        if attempt < 3:
+                            await asyncio.sleep(1.0 * (attempt + 1))
+                return str(appid), None
+
+        async with aiohttp.ClientSession() as session:
+            pairs = await asyncio.gather(
+                *[_fetch_one(appid) for appid in to_fetch], return_exceptions=True
+            )
+
+        for pair in pairs:
+            if isinstance(pair, Exception):
+                decky.logger.warning(f"SGDB batch task error: {pair}")
+                continue
+            appid_str, image_url = pair
+            Plugin._sgdb_image_cache[appid_str] = image_url
+            results[appid_str] = image_url
+
+        return results
 
     # ---- Wishlist fetching strategies ----
 
