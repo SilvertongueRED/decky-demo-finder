@@ -191,7 +191,7 @@ const fullPageDemoBadgeStyle: React.CSSProperties = {
   padding: "2px 6px", borderRadius: "3px", fontSize: "9px",
   fontWeight: "bold",
   background: "linear-gradient(135deg, #1a9fff 0%, #0070d1 100%)",
-  color: "#fff", flexShrink: 0,
+  color: "#fff", flexShrink: 0, marginLeft: "2%",
 };
 
 const fullPageStatusStyle: React.CSSProperties = {
@@ -923,7 +923,7 @@ const FullPageWishlistWithDemos: FC = () => {
                   <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>No demo</span>
                 )}
                 {item.demoInfo?.release_date && (
-                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: "9%" }}>
+                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: item.demoInfo.release_date !== "To Be Announced" ? "11%" : "9%" }}>
                     {item.demoInfo.release_date}
                   </span>
                 )}
