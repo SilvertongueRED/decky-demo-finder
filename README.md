@@ -10,6 +10,10 @@ Simply download the zip from this github page, drop it into your plugins folder,
 
 5. <img width="863" height="960" alt="2026-03-22 12-24-37" src="https://github.com/user-attachments/assets/f52af229-38c8-4a55-9a9b-8dbe03f7762e" />
 
-6. <img width="872" height="1132" alt="image" src="https://github.com/user-attachments/assets/10b728ee-e9a3-462a-a551-f4db69b0a797" />
+6. <img width="2088" height="777" alt="Decky Demo Finder API Key Step" src="https://github.com/user-attachments/assets/5a0bfd66-36f2-4afd-bd9b-9a9c86d7d923" />
 
-7. <img width="3729" height="1854" alt="image" src="https://github.com/user-attachments/assets/5b8f29e5-a665-4e04-8028-aeff40ddbccb" />
+7. <img width="846" height="558" alt="image" src="https://github.com/user-attachments/assets/296f8e44-0af7-47a9-9fee-7c6d78a2e5d8" />
+
+8. <img width="872" height="1132" alt="image" src="https://github.com/user-attachments/assets/10b728ee-e9a3-462a-a551-f4db69b0a797" />
+
+9. <img width="3729" height="1854" alt="image" src="https://github.com/user-attachments/assets/5b8f29e5-a665-4e04-8028-aeff40ddbccb" />
