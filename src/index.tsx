@@ -1231,7 +1231,20 @@ function Content() {
         setShowSetup(true);
         setError("Steam API key required. Please configure your key below to get started.");
       }
-      // Only auto-load if there is no cached wishlist data
+      // If the startup scan already populated the cache, use it directly
+      if (cachedWishlist.length > 0) {
+        setWishlist([...cachedWishlist]);
+        if (cachedHasScanned) {
+          setHasScanned(true);
+          const demosFound = cachedWishlist.filter((i) => i.demoInfo?.has_demo).length;
+          if (demosFound > 0) {
+            setFilterDemoOnly(true);
+            setOptionsCollapsed(true);
+          }
+        }
+        return;
+      }
+      // Fall back to the normal load flow
       if (cachedWishlist.length === 0) {
         loadWishlist();
       }
@@ -1432,12 +1445,141 @@ function Content() {
   );
 }
 
+// ---- Startup scan (runs in background when plugin initializes) ----
+async function startupScan(): Promise<void> {
+  try {
+    // Load demo cache from disk (once)
+    if (!cachedDemoCacheLoaded) {
+      cachedDemoCacheLoaded = true;
+      try {
+        const cache = await loadDemoCache();
+        if (cache && Object.keys(cache).length > 0) {
+          cachedDemoResults = cache;
+          console.log(`[Demo Finder] Startup: loaded ${Object.keys(cache).length} cached demo results from disk`);
+        }
+      } catch (e) {
+        console.warn("[Demo Finder] Startup: failed to load demo cache:", e);
+      }
+    }
+
+    // Check for API key
+    let apiKey: string;
+    try {
+      apiKey = await getApiKey();
+    } catch (e) {
+      console.warn("[Demo Finder] Startup: failed to get API key:", e);
+      return;
+    }
+    if (!apiKey) {
+      console.log("[Demo Finder] Startup: no API key configured, skipping scan");
+      return;
+    }
+
+    // Retry getting the Steam ID (may not be ready immediately on boot)
+    let steamId = "";
+    const maxRetries = 15;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      steamId = getSteamId();
+      if (steamId) break;
+      console.log(`[Demo Finder] Startup: Steam ID not available yet, retrying in 2s (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    if (!steamId) {
+      console.warn("[Demo Finder] Startup: could not get Steam ID after retries, skipping scan");
+      return;
+    }
+
+    // Fetch wishlist
+    let wishlistResult: WishlistItem[] | string;
+    try {
+      wishlistResult = await getWishlist(steamId);
+    } catch (e) {
+      console.warn("[Demo Finder] Startup: failed to fetch wishlist:", e);
+      return;
+    }
+    if (typeof wishlistResult === "string" || !Array.isArray(wishlistResult) || wishlistResult.length === 0) {
+      console.warn("[Demo Finder] Startup: wishlist empty or error:", wishlistResult);
+      return;
+    }
+
+    const items: WishlistItemWithDemo[] = wishlistResult.map((item) => ({ ...item }));
+
+    // If we already have cached demo results for all items, just apply them
+    if (Object.keys(cachedDemoResults).length > 0) {
+      cachedWishlist = items.map((item) => {
+        const demoInfo = cachedDemoResults[String(item.appid)];
+        return demoInfo ? { ...item, demoInfo } : item;
+      });
+      cachedHasScanned = true;
+      const demosFound = cachedWishlist.filter((i) => i.demoInfo?.has_demo).length;
+      console.log(`[Demo Finder] Startup: applied cached results — ${demosFound} demo(s) found`);
+      if (demosFound > 0) {
+        cachedFilterDemoOnly = true;
+        toaster.toast({
+          title: "Demo Finder",
+          body: `Found ${demosFound} demo${demosFound !== 1 ? "s" : ""} in your wishlist!`,
+        });
+      }
+      return;
+    }
+
+    // Otherwise run a full batch scan
+    const appids = items
+      .map((i) => i.appid)
+      .filter((appid) => !cachedDemoResults[String(appid)]?.definitive);
+
+    const totalBatches = Math.ceil(appids.length / BATCH_SIZE);
+    console.log(`[Demo Finder] Startup: scanning ${appids.length} games in ${totalBatches} batch(es)`);
+
+    for (let b = 0; b < totalBatches; b++) {
+      const batch = appids.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+      try {
+        const results = await checkDemosBatch(batch);
+        for (const [appidStr, demoResult] of Object.entries(results)) {
+          cachedDemoResults[appidStr] = demoResult;
+        }
+      } catch (e) {
+        console.error(`[Demo Finder] Startup: batch ${b + 1} failed:`, e);
+      }
+    }
+
+    // Apply results to wishlist
+    cachedWishlist = items.map((item) => {
+      const demoInfo = cachedDemoResults[String(item.appid)];
+      return demoInfo ? { ...item, demoInfo } : item;
+    });
+    cachedHasScanned = true;
+
+    // Persist cache to disk
+    try {
+      await saveDemoCache(cachedDemoResults);
+    } catch (e) {
+      console.warn("[Demo Finder] Startup: failed to persist demo cache:", e);
+    }
+
+    const demosFound = cachedWishlist.filter((i) => i.demoInfo?.has_demo).length;
+    console.log(`[Demo Finder] Startup scan complete — ${demosFound} demo(s) found in ${items.length} games`);
+    if (demosFound > 0) {
+      cachedFilterDemoOnly = true;
+      toaster.toast({
+        title: "Demo Finder",
+        body: `Background scan complete! Found ${demosFound} demo${demosFound !== 1 ? "s" : ""} in your wishlist.`,
+      });
+    }
+  } catch (e) {
+    console.error("[Demo Finder] Startup scan failed:", e);
+  }
+}
+
 // ---- Plugin Registration ----
 export default definePlugin(() => {
   console.log("Demo Finder plugin initializing");
 
   // Register full-page wishlist route
   routerHook.addRoute("/demo-finder-wishlist", FullPageWishlistWithDemos, { exact: true });
+
+  // Kick off background scan ~5s after plugin loads to let Steam fully initialize
+  setTimeout(() => { startupScan(); }, 5000);
 
   return {
     name: "Demo Finder",
