@@ -259,6 +259,16 @@ const fullPageDemoBadgeStyle = {
     background: "linear-gradient(135deg, #1a9fff 0%, #0070d1 100%)",
     color: "#fff", flexShrink: 0, marginLeft: "2%",
 };
+const sortHintStyle = {
+    display: "inline-flex", alignItems: "center", gap: "4px",
+    marginLeft: "8px", color: "rgba(255,255,255,0.55)", fontSize: "11px",
+};
+const sortHintKeyStyle = {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    minWidth: "16px", height: "16px", padding: "0 3px", borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,0.5)", color: "#fff",
+    fontSize: "10px", fontWeight: "bold", boxSizing: "border-box",
+};
 const fullPageStoreBtnStyle = {
     marginLeft: "auto", display: "inline-flex", alignItems: "center",
     padding: "3px 6px", borderRadius: "3px", flexShrink: 0,
@@ -604,9 +614,12 @@ function detectControllerType(id) {
 }
 function getBumperLabels(type) {
     if (type === "xbox")
-        return { prev: "LB", next: "RB" };
-    // PlayStation and unknown default to L1/R1 (Steam Deck uses L1/R1 labeling)
-    return { prev: "L1", next: "R1" };
+        return { prev: "LB", next: "RB", sort: "Y" };
+    // PlayStation: Triangle is the top face button
+    if (type === "playstation")
+        return { prev: "L1", next: "R1", sort: "△" };
+    // Unknown defaults to L1/R1 + Y (Steam Deck uses L1/R1 labeling)
+    return { prev: "L1", next: "R1", sort: "Y" };
 }
 // ---- Bumper Navigation Hook ----
 // L1/R1 (LB/RB) page navigation. Two input paths feed the same handler:
@@ -663,7 +676,7 @@ function useBumperNavigation(setPage, totalPages) {
 }
 /** Polls the first connected gamepad and returns controller-appropriate bumper labels. */
 function useControllerLabels() {
-    const [labels, setLabels] = SP_REACT.useState({ prev: "L1", next: "R1" });
+    const [labels, setLabels] = SP_REACT.useState({ prev: "L1", next: "R1", sort: "Y" });
     SP_REACT.useEffect(() => {
         const interval = setInterval(() => {
             const gamepads = navigator.getGamepads?.();
@@ -674,7 +687,7 @@ function useControllerLabels() {
                     continue;
                 const type = detectControllerType(gp.id);
                 const newLabels = getBumperLabels(type);
-                setLabels((cur) => cur.prev === newLabels.prev && cur.next === newLabels.next ? cur : newLabels);
+                setLabels((cur) => cur.prev === newLabels.prev && cur.next === newLabels.next && cur.sort === newLabels.sort ? cur : newLabels);
                 return;
             }
         }, 500);
@@ -865,7 +878,12 @@ const FullPageWishlistWithDemos = () => {
         else
             openGame(item.appid, item.name);
     };
-    return (SP_JSX.jsxs(DFL.Focusable, { style: fullPageStyle, onButtonDown: onBumperDown, children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs("div", { style: fullPageHeaderStyle, children: [SP_JSX.jsxs("div", { style: fullPageTitleStyle, children: [SP_JSX.jsx(FaGamepad, { size: 22 }), " Demo Finder", wishlist.length > 0 && (SP_JSX.jsxs("span", { style: { fontSize: "14px", fontWeight: "normal", color: "rgba(255,255,255,0.5)" }, children: ["\u2014 ", wishlist.length, " games", hasScanned && `, ${demosFoundCount} with demos`] }))] }), wishlist.length > 0 && (SP_JSX.jsxs(DFL.Focusable, { style: fullPageButtonGroupStyle, "flow-children": "horizontal", children: [SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.6)", fontSize: "12px", alignSelf: "center", whiteSpace: "nowrap" }, children: ["Current Sort Method: ", sortLabel[sortBy]] }), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: cycleSortMode, children: SP_JSX.jsxs("div", { style: fullPageBtnStyle, onClick: cycleSortMode, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 12, style: { marginRight: "6px" } }), sortLabel[nextSortMode(sortBy)]] }) }), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: SP_JSX.jsx("div", { style: filterDemoOnly ? fullPageActiveBtnStyle : fullPageBtnStyle, onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `🎮 Demos Only (${demosFoundCount})` : `All Games (${wishlist.length})` }) })), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: scanning ? undefined : scanForDemos, children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: scanning ? 0.6 : 1 }, onClick: scanning ? undefined : scanForDemos, children: [SP_JSX.jsx(FaSearch, { size: 12, style: { marginRight: "6px" } }), scanning ? scanProgress || "Scanning..." : hasScanned ? "Re-scan" : `Scan ${wishlist.length} Games`] }) })] }))] }), wishlist.length === 0 ? (SP_JSX.jsxs("div", { style: fullPageStatusStyle, children: [SP_JSX.jsx("div", { style: { fontSize: "18px", marginBottom: "8px" }, children: "\uD83C\uDFAE" }), SP_JSX.jsx("div", { children: "No wishlist loaded." }), SP_JSX.jsx("div", { style: { fontSize: "12px", marginTop: "8px", color: "rgba(255,255,255,0.4)" }, children: "Open the Demo Finder in the Quick Access menu (\u2630) to load your wishlist." })] })) : (SP_JSX.jsxs(DFL.Focusable, { style: fullPageGridStyle, "flow-children": "grid", children: [scanning && (SP_JSX.jsx("div", { style: fullPageStatusStyle, children: scanProgress || "Scanning for demos..." })), !scanning && pagedItems.map((item, slot) => (SP_JSX.jsx(DFL.Focusable
+    return (SP_JSX.jsxs(DFL.Focusable, { style: fullPageStyle, onButtonDown: (evt) => {
+            onBumperDown(evt);
+            // Y (Xbox/Steam Deck) / Triangle (PlayStation) cycles the sort method
+            if (!evt?.detail?.is_repeat && evt?.detail?.button === DFL.GamepadButton.OPTIONS)
+                once(cycleSortMode);
+        }, onOptionsActionDescription: "Change Sort", children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs("div", { style: fullPageHeaderStyle, children: [SP_JSX.jsxs("div", { style: fullPageTitleStyle, children: [SP_JSX.jsx(FaGamepad, { size: 22 }), " Demo Finder", wishlist.length > 0 && (SP_JSX.jsxs("span", { style: { fontSize: "14px", fontWeight: "normal", color: "rgba(255,255,255,0.5)" }, children: ["\u2014 ", wishlist.length, " games", hasScanned && `, ${demosFoundCount} with demos`] }))] }), wishlist.length > 0 && (SP_JSX.jsxs(DFL.Focusable, { style: fullPageButtonGroupStyle, "flow-children": "horizontal", children: [SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.6)", fontSize: "12px", alignSelf: "center", whiteSpace: "nowrap" }, children: ["Current Sort Method: ", sortLabel[sortBy], SP_JSX.jsxs("span", { style: sortHintStyle, title: `Press ${bumperLabels.sort} on your controller to change the sort method`, children: [SP_JSX.jsx("span", { style: sortHintKeyStyle, children: bumperLabels.sort }), " Change"] })] }), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: cycleSortMode, children: SP_JSX.jsxs("div", { style: fullPageBtnStyle, onClick: cycleSortMode, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 12, style: { marginRight: "6px" } }), sortLabel[nextSortMode(sortBy)]] }) }), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: SP_JSX.jsx("div", { style: filterDemoOnly ? fullPageActiveBtnStyle : fullPageBtnStyle, onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `🎮 Demos Only (${demosFoundCount})` : `All Games (${wishlist.length})` }) })), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: scanning ? undefined : scanForDemos, children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: scanning ? 0.6 : 1 }, onClick: scanning ? undefined : scanForDemos, children: [SP_JSX.jsx(FaSearch, { size: 12, style: { marginRight: "6px" } }), scanning ? scanProgress || "Scanning..." : hasScanned ? "Re-scan" : `Scan ${wishlist.length} Games`] }) })] }))] }), wishlist.length === 0 ? (SP_JSX.jsxs("div", { style: fullPageStatusStyle, children: [SP_JSX.jsx("div", { style: { fontSize: "18px", marginBottom: "8px" }, children: "\uD83C\uDFAE" }), SP_JSX.jsx("div", { children: "No wishlist loaded." }), SP_JSX.jsx("div", { style: { fontSize: "12px", marginTop: "8px", color: "rgba(255,255,255,0.4)" }, children: "Open the Demo Finder in the Quick Access menu (\u2630) to load your wishlist." })] })) : (SP_JSX.jsxs(DFL.Focusable, { style: fullPageGridStyle, "flow-children": "grid", children: [scanning && (SP_JSX.jsx("div", { style: fullPageStatusStyle, children: scanProgress || "Scanning for demos..." })), !scanning && pagedItems.map((item, slot) => (SP_JSX.jsx(DFL.Focusable
                     // Keyed by grid slot (not appid) so the focused slot survives a page change
                     // and L1/R1 keep working without the controller losing its place.
                     , { className: "demo-finder-card", style: fullPageCardStyle, focusClassName: "demo-finder-card-focus", focusWithinClassName: "demo-finder-card-focus", onActivate: () => once(() => primaryAction(item)), onClick: () => once(() => primaryAction(item)), onSecondaryButton: () => openGame(item.appid, item.name), onOKActionDescription: item.demoInfo?.has_demo ? "Play Demo" : "Store Page", onSecondaryActionDescription: "Store Page", children: SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx("img", { src: item.demoInfo?.header_image || capsuleImageCache[String(item.appid)] || `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/capsule_616x353.jpg`, alt: item.name, style: fullPageCardImgStyle, onLoad: (e) => {

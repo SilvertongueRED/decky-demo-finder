@@ -226,6 +226,18 @@ const fullPageDemoBadgeStyle: React.CSSProperties = {
   color: "#fff", flexShrink: 0, marginLeft: "2%",
 };
 
+const sortHintStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: "4px",
+  marginLeft: "8px", color: "rgba(255,255,255,0.55)", fontSize: "11px",
+};
+
+const sortHintKeyStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", justifyContent: "center",
+  minWidth: "16px", height: "16px", padding: "0 3px", borderRadius: "50%",
+  border: "1px solid rgba(255,255,255,0.5)", color: "#fff",
+  fontSize: "10px", fontWeight: "bold", boxSizing: "border-box",
+};
+
 const fullPageStoreBtnStyle: React.CSSProperties = {
   marginLeft: "auto", display: "inline-flex", alignItems: "center",
   padding: "3px 6px", borderRadius: "3px", flexShrink: 0,
@@ -653,10 +665,14 @@ function detectControllerType(id: string): ControllerType {
   return "unknown";
 }
 
-function getBumperLabels(type: ControllerType): { prev: string; next: string } {
-  if (type === "xbox") return { prev: "LB", next: "RB" };
-  // PlayStation and unknown default to L1/R1 (Steam Deck uses L1/R1 labeling)
-  return { prev: "L1", next: "R1" };
+type ControllerLabels = { prev: string; next: string; sort: string };
+
+function getBumperLabels(type: ControllerType): ControllerLabels {
+  if (type === "xbox") return { prev: "LB", next: "RB", sort: "Y" };
+  // PlayStation: Triangle is the top face button
+  if (type === "playstation") return { prev: "L1", next: "R1", sort: "△" };
+  // Unknown defaults to L1/R1 + Y (Steam Deck uses L1/R1 labeling)
+  return { prev: "L1", next: "R1", sort: "Y" };
 }
 
 // ---- Bumper Navigation Hook ----
@@ -713,8 +729,8 @@ function useBumperNavigation(
 }
 
 /** Polls the first connected gamepad and returns controller-appropriate bumper labels. */
-function useControllerLabels(): { prev: string; next: string } {
-  const [labels, setLabels] = useState<{ prev: string; next: string }>({ prev: "L1", next: "R1" });
+function useControllerLabels(): ControllerLabels {
+  const [labels, setLabels] = useState<ControllerLabels>({ prev: "L1", next: "R1", sort: "Y" });
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -725,7 +741,7 @@ function useControllerLabels(): { prev: string; next: string } {
         const type = detectControllerType(gp.id);
         const newLabels = getBumperLabels(type);
         setLabels((cur) =>
-          cur.prev === newLabels.prev && cur.next === newLabels.next ? cur : newLabels
+          cur.prev === newLabels.prev && cur.next === newLabels.next && cur.sort === newLabels.sort ? cur : newLabels
         );
         return;
       }
@@ -944,7 +960,15 @@ const FullPageWishlistWithDemos: FC = () => {
   };
 
   return (
-    <Focusable style={fullPageStyle} onButtonDown={onBumperDown}>
+    <Focusable
+      style={fullPageStyle}
+      onButtonDown={(evt: GamepadEvent) => {
+        onBumperDown(evt);
+        // Y (Xbox/Steam Deck) / Triangle (PlayStation) cycles the sort method
+        if (!evt?.detail?.is_repeat && evt?.detail?.button === GamepadButton.OPTIONS) once(cycleSortMode);
+      }}
+      onOptionsActionDescription="Change Sort"
+    >
       <style>{focusHighlightCSS}</style>
       {/* Header */}
       <div style={fullPageHeaderStyle}>
@@ -963,6 +987,9 @@ const FullPageWishlistWithDemos: FC = () => {
           <Focusable style={fullPageButtonGroupStyle} flow-children="horizontal">
             <span style={{ color: "rgba(255,255,255,0.6)", fontSize: "12px", alignSelf: "center", whiteSpace: "nowrap" }}>
               Current Sort Method: {sortLabel[sortBy]}
+              <span style={sortHintStyle} title={`Press ${bumperLabels.sort} on your controller to change the sort method`}>
+                <span style={sortHintKeyStyle}>{bumperLabels.sort}</span> Change
+              </span>
             </span>
             <Focusable className="demo-finder-btn" focusWithinClassName="demo-finder-btn-focus" focusClassName="demo-finder-btn-focus" onActivate={cycleSortMode}>
               <div style={fullPageBtnStyle} onClick={cycleSortMode}>
