@@ -2,10 +2,11 @@
 
 Finds which games on your Steam wishlist have demos and lets you jump straight to them. Works on Steam Deck (Decky Loader) and Windows.
 
-## Latest release: v1.2.0
-- New: press **Y** (Triangle on PlayStation) to change the sort method, with an on-screen hint next to the sort label
+## Latest release: v1.2.1
+- Fix: Play Demo badge and release dates no longer cut off on cards ("To be announced" now shows as TBA)
+- v1.2.0: press **Y** (Triangle on PlayStation) to change the sort method, with an on-screen hint
 - v1.1.0: selection highlight restored (controller **and** mouse) and L1 / R1 (LB / RB) page navigation fixed
-- See [release notes](release-notes/v1.2.0.md) and the [Releases page](https://github.com/SilvertongueRED/decky-demo-finder/releases) for downloads
+- See [release notes](release-notes/v1.2.1.md) and the [Releases page](https://github.com/SilvertongueRED/decky-demo-finder/releases) for downloads
 
 ## Controls (full wishlist view)
 | Input | Action |

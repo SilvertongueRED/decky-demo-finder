@@ -212,9 +212,17 @@ const fullPageCardImgStyle: React.CSSProperties = {
 
 const fullPageCardBodyStyle: React.CSSProperties = {
   padding: "4px 8px", flex: 1,
-  display: "flex", flexDirection: "row", gap: "6px",
+  display: "flex", flexDirection: "row", flexWrap: "nowrap", gap: "6px",
   alignItems: "center",
   marginTop: "-2%",
+  minWidth: 0, overflow: "hidden", whiteSpace: "nowrap",
+};
+
+// Release date: always one line, takes the remaining space between the badge and the store button
+const fullPageDateStyle: React.CSSProperties = {
+  flex: "1 1 auto", minWidth: 0, textAlign: "center",
+  fontSize: "10px", color: "rgba(255,255,255,0.4)",
+  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 };
 
 
@@ -223,7 +231,7 @@ const fullPageDemoBadgeStyle: React.CSSProperties = {
   padding: "2px 6px", borderRadius: "3px", fontSize: "9px",
   fontWeight: "bold",
   background: "linear-gradient(135deg, #1a9fff 0%, #0070d1 100%)",
-  color: "#fff", flexShrink: 0, marginLeft: "2%",
+  color: "#fff", flexShrink: 0, marginLeft: "2%", whiteSpace: "nowrap",
 };
 
 const sortHintStyle: React.CSSProperties = {
@@ -1161,8 +1169,8 @@ const FullPageWishlistWithDemos: FC = () => {
                   <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>No demo</span>
                 )}
                 {item.demoInfo?.release_date && (
-                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: item.demoInfo.release_date !== "To Be Announced" ? "11%" : "9%" }}>
-                    {item.demoInfo.release_date}
+                  <span style={fullPageDateStyle} title={item.demoInfo.release_date}>
+                    {/^to be announced$/i.test(item.demoInfo.release_date.trim()) ? "TBA" : item.demoInfo.release_date}
                   </span>
                 )}
                 {/* Mouse shortcut to the store page (controller: X button) */}

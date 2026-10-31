@@ -248,16 +248,23 @@ const fullPageCardImgStyle = {
 };
 const fullPageCardBodyStyle = {
     padding: "4px 8px", flex: 1,
-    display: "flex", flexDirection: "row", gap: "6px",
+    display: "flex", flexDirection: "row", flexWrap: "nowrap", gap: "6px",
     alignItems: "center",
     marginTop: "-2%",
+    minWidth: 0, overflow: "hidden", whiteSpace: "nowrap",
+};
+// Release date: always one line, takes the remaining space between the badge and the store button
+const fullPageDateStyle = {
+    flex: "1 1 auto", minWidth: 0, textAlign: "center",
+    fontSize: "10px", color: "rgba(255,255,255,0.4)",
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 };
 const fullPageDemoBadgeStyle = {
     display: "inline-flex", alignItems: "center", gap: "3px",
     padding: "2px 6px", borderRadius: "3px", fontSize: "9px",
     fontWeight: "bold",
     background: "linear-gradient(135deg, #1a9fff 0%, #0070d1 100%)",
-    color: "#fff", flexShrink: 0, marginLeft: "2%",
+    color: "#fff", flexShrink: 0, marginLeft: "2%", whiteSpace: "nowrap",
 };
 const sortHintStyle = {
     display: "inline-flex", alignItems: "center", gap: "4px",
@@ -966,7 +973,7 @@ const FullPageWishlistWithDemos = () => {
                                         fontSize: "11px", color: "rgba(255,255,255,0.35)",
                                         textAlign: "center", padding: "8px", boxSizing: "border-box",
                                         overflow: "hidden", textOverflow: "ellipsis",
-                                    }, children: SP_JSX.jsx(FaGamepad, { size: 20, style: { opacity: 0.3 } }) }), SP_JSX.jsxs("div", { style: fullPageCardBodyStyle, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsxs("div", { style: fullPageDemoBadgeStyle, children: [SP_JSX.jsx(FaGamepad, { size: 9 }), " Play Demo"] })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" }))) : !hasScanned ? (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.2)" }, children: "\u2014" })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" })), item.demoInfo?.release_date && (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: item.demoInfo.release_date !== "To Be Announced" ? "11%" : "9%" }, children: item.demoInfo.release_date })), SP_JSX.jsx("div", { className: "demo-finder-store-btn", title: "Open store page", style: fullPageStoreBtnStyle, onClick: (e) => { e.stopPropagation(); once(() => openGame(item.appid, item.name)); }, children: SP_JSX.jsx(FaExternalLinkAlt, { size: 9 }) })] })] }, item.appid) }, slot))), !scanning && totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { ...fullPagePaginationStyle, gridColumn: "1 / -1" }, children: [SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusClassName: "demo-finder-btn-focus", focusWithinClassName: "demo-finder-btn-focus", onActivate: () => once(() => changePage(-1)), children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: page === 0 ? 0.4 : 1 }, onClick: () => once(() => changePage(-1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "13px" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusClassName: "demo-finder-btn-focus", focusWithinClassName: "demo-finder-btn-focus", onActivate: () => once(() => changePage(1)), children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: page >= totalPages - 1 ? 0.4 : 1 }, onClick: () => once(() => changePage(1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
+                                    }, children: SP_JSX.jsx(FaGamepad, { size: 20, style: { opacity: 0.3 } }) }), SP_JSX.jsxs("div", { style: fullPageCardBodyStyle, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsxs("div", { style: fullPageDemoBadgeStyle, children: [SP_JSX.jsx(FaGamepad, { size: 9 }), " Play Demo"] })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" }))) : !hasScanned ? (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.2)" }, children: "\u2014" })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" })), item.demoInfo?.release_date && (SP_JSX.jsx("span", { style: fullPageDateStyle, title: item.demoInfo.release_date, children: /^to be announced$/i.test(item.demoInfo.release_date.trim()) ? "TBA" : item.demoInfo.release_date })), SP_JSX.jsx("div", { className: "demo-finder-store-btn", title: "Open store page", style: fullPageStoreBtnStyle, onClick: (e) => { e.stopPropagation(); once(() => openGame(item.appid, item.name)); }, children: SP_JSX.jsx(FaExternalLinkAlt, { size: 9 }) })] })] }, item.appid) }, slot))), !scanning && totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { ...fullPagePaginationStyle, gridColumn: "1 / -1" }, children: [SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusClassName: "demo-finder-btn-focus", focusWithinClassName: "demo-finder-btn-focus", onActivate: () => once(() => changePage(-1)), children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: page === 0 ? 0.4 : 1 }, onClick: () => once(() => changePage(-1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "13px" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusClassName: "demo-finder-btn-focus", focusWithinClassName: "demo-finder-btn-focus", onActivate: () => once(() => changePage(1)), children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: page >= totalPages - 1 ? 0.4 : 1 }, onClick: () => once(() => changePage(1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
 };
 // ---- Main Content ----
 function Content() {
