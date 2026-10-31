@@ -55,11 +55,9 @@ function GenIcon(data) {
 }
 function IconBase(props) {
   var elem = conf => {
-    var {
-        attr,
-        size,
-        title
-      } = props,
+    var attr = props.attr,
+      size = props.size,
+      title = props.title,
       svgProps = _objectWithoutProperties(props, _excluded);
     var computedSize = size || conf.size || "1em";
     var className;
@@ -165,9 +163,36 @@ const focusHighlightCSS = `
     border-color: rgba(255, 255, 255, 0.6) !important;
     background: rgba(255, 255, 255, 0.15) !important;
   }
+  /* Highlight for full-page cards: controller focus (gpfocus / gpfocuswithin),
+     keyboard focus and mouse hover all use the same look. */
+  .demo-finder-card {
+    transition: box-shadow 0.12s ease, background 0.12s ease;
+  }
+  .demo-finder-card:hover,
+  .demo-finder-card:focus,
+  .demo-finder-card:focus-within,
+  .demo-finder-card.gpfocus,
+  .demo-finder-card.gpfocuswithin,
   .demo-finder-card-focus {
-    outline: 2px solid rgba(100, 180, 255, 0.8) !important;
+    outline: 3px solid rgba(100, 180, 255, 0.95) !important;
+    outline-offset: 2px;
     border-radius: 6px;
+    background: rgba(100, 180, 255, 0.18) !important;
+    box-shadow: 0 0 16px 2px rgba(100, 180, 255, 0.55);
+  }
+  /* Highlight for header + pagination buttons (wrapper holds the focus classes) */
+  .demo-finder-btn:hover > div,
+  .demo-finder-btn:focus > div,
+  .demo-finder-btn:focus-within > div,
+  .demo-finder-btn.gpfocus > div,
+  .demo-finder-btn.gpfocuswithin > div,
+  .demo-finder-btn-focus > div {
+    border-color: rgba(100, 180, 255, 0.95) !important;
+    background: rgba(100, 180, 255, 0.3) !important;
+    box-shadow: 0 0 10px 1px rgba(100, 180, 255, 0.55);
+  }
+  .demo-finder-store-btn:hover {
+    background: rgba(255, 255, 255, 0.25) !important;
   }
 `;
 // ---- Full-page view styles ----
@@ -233,6 +258,11 @@ const fullPageDemoBadgeStyle = {
     fontWeight: "bold",
     background: "linear-gradient(135deg, #1a9fff 0%, #0070d1 100%)",
     color: "#fff", flexShrink: 0, marginLeft: "2%",
+};
+const fullPageStoreBtnStyle = {
+    marginLeft: "auto", display: "inline-flex", alignItems: "center",
+    padding: "3px 6px", borderRadius: "3px", flexShrink: 0,
+    background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.8)",
 };
 const fullPageStatusStyle = {
     textAlign: "center", padding: "32px", fontSize: "14px",
@@ -376,13 +406,11 @@ async function resolveNamesViaWishlistData(steamId) {
                     }
                     // Harvest capsule image so the full-page view has an image source
                     // available even before a demo scan is performed.
-                    // The wishlistdata "capsule" field returns a small portrait image
-                    // which doesn't fit the 460/215 landscape card layout. Use
-                    // capsule_616x353.jpg instead, matching the backend scanner and
-                    // resolveImagelessGames() which also use this wide landscape URL.
-                    if (rec.capsule) {
-                        capsuleImageCache[appidStr] = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appidStr}/capsule_616x353.jpg`;
-                    }
+                    // The URL is deterministic (appid only) so always write it regardless
+                    // of whether wishlistdata includes a "capsule" field. Games without
+                    // that field (new/unlisted/pre-release titles) would otherwise get
+                    // skipped, leaving them imageless until resolveImagelessGames runs.
+                    capsuleImageCache[appidStr] = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appidStr}/capsule_616x353.jpg`;
                 }
             }
         }
@@ -581,9 +609,22 @@ function getBumperLabels(type) {
     return { prev: "L1", next: "R1" };
 }
 // ---- Bumper Navigation Hook ----
+// L1/R1 (LB/RB) page navigation. Two input paths feed the same handler:
+//  1. Steam's native gamepad events (onButtonDown on a Focusable) - this is what
+//     works on Steam Deck / Big Picture, where navigator.getGamepads() is often empty.
+//  2. The browser Gamepad API as a fallback for setups where it does report buttons.
+// A short de-duplication window stops both paths from turning one press into two pages.
 function useBumperNavigation(setPage, totalPages) {
     const totalPagesRef = SP_REACT.useRef(totalPages);
+    const lastChangeRef = SP_REACT.useRef(0);
     SP_REACT.useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
+    const changePage = SP_REACT.useCallback((delta) => {
+        const now = Date.now();
+        if (now - lastChangeRef.current < 200)
+            return;
+        lastChangeRef.current = now;
+        setPage((p) => Math.max(0, Math.min(totalPagesRef.current - 1, p + delta)));
+    }, [setPage]);
     SP_REACT.useEffect(() => {
         const prevButtons = { 4: false, 5: false };
         const interval = setInterval(() => {
@@ -595,21 +636,30 @@ function useBumperNavigation(setPage, totalPages) {
                     continue;
                 // L1/LB (button 4) = previous page
                 const l1 = gp.buttons[4]?.pressed ?? false;
-                if (l1 && !prevButtons[4]) {
-                    setPage((p) => Math.max(0, p - 1));
-                }
+                if (l1 && !prevButtons[4])
+                    changePage(-1);
                 prevButtons[4] = l1;
                 // R1/RB (button 5) = next page
                 const r1 = gp.buttons[5]?.pressed ?? false;
-                if (r1 && !prevButtons[5]) {
-                    setPage((p) => Math.min(totalPagesRef.current - 1, p + 1));
-                }
+                if (r1 && !prevButtons[5])
+                    changePage(1);
                 prevButtons[5] = r1;
                 break; // Only use the first connected gamepad
             }
         }, 100);
         return () => clearInterval(interval);
-    }, [setPage]);
+    }, [changePage]);
+    /** Handler for Focusable.onButtonDown - attach to a container so it sees bumpers from any focused child. */
+    const onButtonDown = SP_REACT.useCallback((evt) => {
+        if (evt?.detail?.is_repeat)
+            return;
+        const button = evt?.detail?.button;
+        if (button === DFL.GamepadButton.BUMPER_LEFT)
+            changePage(-1);
+        else if (button === DFL.GamepadButton.BUMPER_RIGHT)
+            changePage(1);
+    }, [changePage]);
+    return { changePage, onButtonDown };
 }
 /** Polls the first connected gamepad and returns controller-appropriate bumper labels. */
 function useControllerLabels() {
@@ -677,7 +727,17 @@ const FullPageWishlistWithDemos = () => {
     const totalPages = Math.ceil(sortedFilteredItems.length / FULL_PAGE_ITEMS_PER_PAGE);
     const pagedItems = sortedFilteredItems.slice(page * FULL_PAGE_ITEMS_PER_PAGE, (page + 1) * FULL_PAGE_ITEMS_PER_PAGE);
     const demosFoundCount = wishlist.filter((item) => item.demoInfo?.has_demo).length;
-    useBumperNavigation(setPage, totalPages);
+    const { changePage, onButtonDown: onBumperDown } = useBumperNavigation(setPage, totalPages);
+    // De-duplicates activation: depending on the input path (A button / mouse click)
+    // both onActivate and onClick can fire for a single press.
+    const lastActivateRef = SP_REACT.useRef(0);
+    const once = (fn) => {
+        const now = Date.now();
+        if (now - lastActivateRef.current < 400)
+            return;
+        lastActivateRef.current = now;
+        fn();
+    };
     const nextSortMode = (mode) => {
         if (mode === "alpha")
             return "date_added";
@@ -798,71 +858,97 @@ const FullPageWishlistWithDemos = () => {
             toaster.toast({ title: "Demo Finder", body: `Opening demo for ${gameName}` });
         }
     };
-    return (SP_JSX.jsxs("div", { style: fullPageStyle, children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs("div", { style: fullPageHeaderStyle, children: [SP_JSX.jsxs("div", { style: fullPageTitleStyle, children: [SP_JSX.jsx(FaGamepad, { size: 22 }), " Demo Finder", wishlist.length > 0 && (SP_JSX.jsxs("span", { style: { fontSize: "14px", fontWeight: "normal", color: "rgba(255,255,255,0.5)" }, children: ["\u2014 ", wishlist.length, " games", hasScanned && `, ${demosFoundCount} with demos`] }))] }), wishlist.length > 0 && (SP_JSX.jsxs(DFL.Focusable, { style: fullPageButtonGroupStyle, "flow-children": "horizontal", children: [SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.6)", fontSize: "12px", alignSelf: "center", whiteSpace: "nowrap" }, children: ["Current Sort Method: ", sortLabel[sortBy]] }), SP_JSX.jsx(DFL.Focusable, { onActivate: cycleSortMode, children: SP_JSX.jsxs("div", { style: fullPageBtnStyle, onClick: cycleSortMode, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 12, style: { marginRight: "6px" } }), sortLabel[nextSortMode(sortBy)]] }) }), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.Focusable, { onActivate: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: SP_JSX.jsx("div", { style: filterDemoOnly ? fullPageActiveBtnStyle : fullPageBtnStyle, onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `🎮 Demos Only (${demosFoundCount})` : `All Games (${wishlist.length})` }) })), SP_JSX.jsx(DFL.Focusable, { onActivate: scanning ? undefined : scanForDemos, children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: scanning ? 0.6 : 1 }, onClick: scanning ? undefined : scanForDemos, children: [SP_JSX.jsx(FaSearch, { size: 12, style: { marginRight: "6px" } }), scanning ? scanProgress || "Scanning..." : hasScanned ? "Re-scan" : `Scan ${wishlist.length} Games`] }) })] }))] }), wishlist.length === 0 ? (SP_JSX.jsxs("div", { style: fullPageStatusStyle, children: [SP_JSX.jsx("div", { style: { fontSize: "18px", marginBottom: "8px" }, children: "\uD83C\uDFAE" }), SP_JSX.jsx("div", { children: "No wishlist loaded." }), SP_JSX.jsx("div", { style: { fontSize: "12px", marginTop: "8px", color: "rgba(255,255,255,0.4)" }, children: "Open the Demo Finder in the Quick Access menu (\u2630) to load your wishlist." })] })) : (SP_JSX.jsxs(DFL.Focusable, { style: fullPageGridStyle, "flow-children": "grid", children: [scanning && (SP_JSX.jsx("div", { style: fullPageStatusStyle, children: scanProgress || "Scanning for demos..." })), !scanning && pagedItems.map((item) => (SP_JSX.jsxs(DFL.Focusable, { style: fullPageCardStyle, focusWithinClassName: "demo-finder-card-focus", onActivate: () => openGame(item.appid, item.name), children: [SP_JSX.jsx("img", { src: item.demoInfo?.header_image || capsuleImageCache[String(item.appid)] || `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/header.jpg`, alt: item.name, style: fullPageCardImgStyle, onLoad: (e) => {
-                                    const img = e.currentTarget;
-                                    // Always restore visibility (may have been hidden by a previous exhausted onError chain)
-                                    img.style.display = "block";
-                                    img.style.objectFit = "cover";
-                                    img.style.background = "rgba(0,0,0,0.3)";
-                                    // Hide placeholder if it was shown
-                                    const placeholder = img.parentElement?.querySelector(".img-placeholder");
-                                    if (placeholder)
-                                        placeholder.style.display = "none";
-                                    // Reset fallback chain state so a future onError starts fresh
-                                    delete img.dataset.fbIdx;
-                                    delete img.dataset.fallback;
-                                }, onError: (e) => {
-                                    const img = e.currentTarget;
-                                    const cdnBase = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/`;
-                                    const sharedBase = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${item.appid}/`;
-                                    const cfBase = `https://cdn.cloudflare.steamstatic.com/steam/apps/${item.appid}/`;
-                                    const fastlyBase = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/`;
-                                    const fallbacks = [
-                                        `${fastlyBase}capsule_616x353.jpg`,
-                                        `${cdnBase}capsule_616x353.jpg`,
-                                        `${sharedBase}capsule_616x353.jpg`,
-                                        `${fastlyBase}header.jpg`,
-                                        `${cdnBase}header.jpg`,
-                                        `${sharedBase}header.jpg`,
-                                        `${cfBase}header.jpg`,
-                                        `${cdnBase}library_600x900.jpg`,
-                                        `${sharedBase}library_600x900.jpg`,
-                                        `${cdnBase}hero_capsule.jpg`,
-                                        `${sharedBase}hero_capsule.jpg`,
-                                        `${cdnBase}header_292x136.jpg`,
-                                        `${sharedBase}header_292x136.jpg`,
-                                        `${cdnBase}library_hero.jpg`,
-                                        `${sharedBase}library_hero.jpg`,
-                                        `${cdnBase}capsule_231x87.jpg`,
-                                        `${sharedBase}capsule_231x87.jpg`,
-                                        `${cdnBase}capsule_sm_120.jpg`,
-                                        `${sharedBase}capsule_sm_120.jpg`,
-                                    ];
-                                    let next = parseInt(img.dataset.fbIdx ?? "-1", 10) + 1;
-                                    // Skip any fallback whose base URL matches the currently-failed src
-                                    const curBase = img.src.split("?")[0];
-                                    while (next < fallbacks.length && curBase === fallbacks[next])
-                                        next++;
-                                    if (next < fallbacks.length) {
-                                        img.dataset.fbIdx = String(next);
-                                        img.dataset.fallback = "true";
-                                        img.src = fallbacks[next];
-                                    }
-                                    else {
-                                        // All Steam CDN URLs exhausted — show placeholder
-                                        img.style.display = "none";
+    // A button / click: play the demo when there is one, otherwise open the store page.
+    const primaryAction = (item) => {
+        if (item.demoInfo?.has_demo && item.demoInfo.demo_appid)
+            openDemo(item.demoInfo, item.name);
+        else
+            openGame(item.appid, item.name);
+    };
+    return (SP_JSX.jsxs(DFL.Focusable, { style: fullPageStyle, onButtonDown: onBumperDown, children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs("div", { style: fullPageHeaderStyle, children: [SP_JSX.jsxs("div", { style: fullPageTitleStyle, children: [SP_JSX.jsx(FaGamepad, { size: 22 }), " Demo Finder", wishlist.length > 0 && (SP_JSX.jsxs("span", { style: { fontSize: "14px", fontWeight: "normal", color: "rgba(255,255,255,0.5)" }, children: ["\u2014 ", wishlist.length, " games", hasScanned && `, ${demosFoundCount} with demos`] }))] }), wishlist.length > 0 && (SP_JSX.jsxs(DFL.Focusable, { style: fullPageButtonGroupStyle, "flow-children": "horizontal", children: [SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.6)", fontSize: "12px", alignSelf: "center", whiteSpace: "nowrap" }, children: ["Current Sort Method: ", sortLabel[sortBy]] }), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: cycleSortMode, children: SP_JSX.jsxs("div", { style: fullPageBtnStyle, onClick: cycleSortMode, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 12, style: { marginRight: "6px" } }), sortLabel[nextSortMode(sortBy)]] }) }), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: SP_JSX.jsx("div", { style: filterDemoOnly ? fullPageActiveBtnStyle : fullPageBtnStyle, onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `🎮 Demos Only (${demosFoundCount})` : `All Games (${wishlist.length})` }) })), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusWithinClassName: "demo-finder-btn-focus", focusClassName: "demo-finder-btn-focus", onActivate: scanning ? undefined : scanForDemos, children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: scanning ? 0.6 : 1 }, onClick: scanning ? undefined : scanForDemos, children: [SP_JSX.jsx(FaSearch, { size: 12, style: { marginRight: "6px" } }), scanning ? scanProgress || "Scanning..." : hasScanned ? "Re-scan" : `Scan ${wishlist.length} Games`] }) })] }))] }), wishlist.length === 0 ? (SP_JSX.jsxs("div", { style: fullPageStatusStyle, children: [SP_JSX.jsx("div", { style: { fontSize: "18px", marginBottom: "8px" }, children: "\uD83C\uDFAE" }), SP_JSX.jsx("div", { children: "No wishlist loaded." }), SP_JSX.jsx("div", { style: { fontSize: "12px", marginTop: "8px", color: "rgba(255,255,255,0.4)" }, children: "Open the Demo Finder in the Quick Access menu (\u2630) to load your wishlist." })] })) : (SP_JSX.jsxs(DFL.Focusable, { style: fullPageGridStyle, "flow-children": "grid", children: [scanning && (SP_JSX.jsx("div", { style: fullPageStatusStyle, children: scanProgress || "Scanning for demos..." })), !scanning && pagedItems.map((item, slot) => (SP_JSX.jsx(DFL.Focusable
+                    // Keyed by grid slot (not appid) so the focused slot survives a page change
+                    // and L1/R1 keep working without the controller losing its place.
+                    , { className: "demo-finder-card", style: fullPageCardStyle, focusClassName: "demo-finder-card-focus", focusWithinClassName: "demo-finder-card-focus", onActivate: () => once(() => primaryAction(item)), onClick: () => once(() => primaryAction(item)), onSecondaryButton: () => openGame(item.appid, item.name), onOKActionDescription: item.demoInfo?.has_demo ? "Play Demo" : "Store Page", onSecondaryActionDescription: "Store Page", children: SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx("img", { src: item.demoInfo?.header_image || capsuleImageCache[String(item.appid)] || `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/capsule_616x353.jpg`, alt: item.name, style: fullPageCardImgStyle, onLoad: (e) => {
+                                        const img = e.currentTarget;
+                                        // Always restore visibility (may have been hidden by a previous exhausted onError chain)
+                                        img.style.display = "block";
+                                        img.style.background = "rgba(0,0,0,0.3)";
+                                        // Check aspect ratio: card is ~2.14:1 (460/215). If loaded image
+                                        // is too portrait (< 1.2) or too ultra-wide (> 3.0), use "contain"
+                                        // to avoid severe cropping. Otherwise use "cover" for a clean fill.
+                                        const ratio = img.naturalWidth > 0 && img.naturalHeight > 0
+                                            ? img.naturalWidth / img.naturalHeight
+                                            : 2.14;
+                                        if (ratio < 1.2 || ratio > 3.0) {
+                                            img.style.objectFit = "contain";
+                                        }
+                                        else {
+                                            img.style.objectFit = "cover";
+                                        }
+                                        // Hide placeholder if it was shown
                                         const placeholder = img.parentElement?.querySelector(".img-placeholder");
                                         if (placeholder)
-                                            placeholder.style.display = "flex";
-                                    }
-                                } }), SP_JSX.jsx("div", { className: "img-placeholder", style: {
-                                    display: "none", width: "100%", aspectRatio: "460 / 215",
-                                    background: "linear-gradient(135deg, rgba(27,40,56,0.9) 0%, rgba(15,25,40,0.9) 100%)",
-                                    alignItems: "center", justifyContent: "center",
-                                    fontSize: "11px", color: "rgba(255,255,255,0.35)",
-                                    textAlign: "center", padding: "8px", boxSizing: "border-box",
-                                    overflow: "hidden", textOverflow: "ellipsis",
-                                }, children: SP_JSX.jsx(FaGamepad, { size: 20, style: { opacity: 0.3 } }) }), SP_JSX.jsxs("div", { style: fullPageCardBodyStyle, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsx(DFL.Focusable, { style: { display: "contents" }, onActivate: () => { openDemo(item.demoInfo, item.name); }, children: SP_JSX.jsxs("div", { style: fullPageDemoBadgeStyle, onClick: (e) => { e.stopPropagation(); openDemo(item.demoInfo, item.name); }, children: [SP_JSX.jsx(FaGamepad, { size: 9 }), " Play Demo"] }) })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" }))) : !hasScanned ? (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.2)" }, children: "\u2014" })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" })), item.demoInfo?.release_date && (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: item.demoInfo.release_date !== "To Be Announced" ? "11%" : "9%" }, children: item.demoInfo.release_date }))] })] }, item.appid))), !scanning && totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { ...fullPagePaginationStyle, gridColumn: "1 / -1" }, children: [SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.max(0, page - 1)), style: { ...fullPageBtnStyle, opacity: page === 0 ? 0.3 : 1 }, children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.max(0, page - 1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "13px" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.min(totalPages - 1, page + 1)), style: { ...fullPageBtnStyle, opacity: page >= totalPages - 1 ? 0.3 : 1 }, children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.min(totalPages - 1, page + 1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
+                                            placeholder.style.display = "none";
+                                        // Reset fallback chain state so a future onError starts fresh
+                                        delete img.dataset.fbIdx;
+                                        delete img.dataset.fallback;
+                                    }, onError: (e) => {
+                                        const img = e.currentTarget;
+                                        const cdnBase = `https://cdn.akamai.steamstatic.com/steam/apps/${item.appid}/`;
+                                        const sharedBase = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${item.appid}/`;
+                                        const cfBase = `https://cdn.cloudflare.steamstatic.com/steam/apps/${item.appid}/`;
+                                        const fastlyBase = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/`;
+                                        const fallbacks = [
+                                            // Landscape capsule — ideal 616x353 (~1.75:1)
+                                            `${fastlyBase}capsule_616x353.jpg`,
+                                            `${cdnBase}capsule_616x353.jpg`,
+                                            `${sharedBase}capsule_616x353.jpg`,
+                                            // header.jpg — 460x215, perfect match for card ratio
+                                            `${fastlyBase}header.jpg`,
+                                            `${cdnBase}header.jpg`,
+                                            `${sharedBase}header.jpg`,
+                                            `${cfBase}header.jpg`,
+                                            // Small landscape capsules — correct ratio, just lower resolution
+                                            `${cdnBase}header_292x136.jpg`,
+                                            `${sharedBase}header_292x136.jpg`,
+                                            `${cdnBase}capsule_231x87.jpg`,
+                                            `${sharedBase}capsule_231x87.jpg`,
+                                            `${cdnBase}capsule_sm_120.jpg`,
+                                            `${sharedBase}capsule_sm_120.jpg`,
+                                            // hero_capsule — varies, but often close enough to landscape
+                                            `${cdnBase}hero_capsule.jpg`,
+                                            `${sharedBase}hero_capsule.jpg`,
+                                            // Last resort: portrait/ultra-wide images that will use objectFit:contain
+                                            `${cdnBase}library_600x900.jpg`,
+                                            `${sharedBase}library_600x900.jpg`,
+                                            `${cdnBase}library_hero.jpg`,
+                                            `${sharedBase}library_hero.jpg`,
+                                        ];
+                                        let next = parseInt(img.dataset.fbIdx ?? "-1", 10) + 1;
+                                        // Skip any fallback whose base URL matches the currently-failed src
+                                        const curBase = img.src.split("?")[0];
+                                        while (next < fallbacks.length && curBase === fallbacks[next])
+                                            next++;
+                                        if (next < fallbacks.length) {
+                                            img.dataset.fbIdx = String(next);
+                                            img.dataset.fallback = "true";
+                                            img.src = fallbacks[next];
+                                        }
+                                        else {
+                                            // All Steam CDN URLs exhausted — show placeholder
+                                            img.style.display = "none";
+                                            const placeholder = img.parentElement?.querySelector(".img-placeholder");
+                                            if (placeholder)
+                                                placeholder.style.display = "flex";
+                                        }
+                                    } }), SP_JSX.jsx("div", { className: "img-placeholder", style: {
+                                        display: "none", width: "100%", aspectRatio: "460 / 215",
+                                        background: "linear-gradient(135deg, rgba(27,40,56,0.9) 0%, rgba(15,25,40,0.9) 100%)",
+                                        alignItems: "center", justifyContent: "center",
+                                        fontSize: "11px", color: "rgba(255,255,255,0.35)",
+                                        textAlign: "center", padding: "8px", boxSizing: "border-box",
+                                        overflow: "hidden", textOverflow: "ellipsis",
+                                    }, children: SP_JSX.jsx(FaGamepad, { size: 20, style: { opacity: 0.3 } }) }), SP_JSX.jsxs("div", { style: fullPageCardBodyStyle, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsxs("div", { style: fullPageDemoBadgeStyle, children: [SP_JSX.jsx(FaGamepad, { size: 9 }), " Play Demo"] })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" }))) : !hasScanned ? (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.2)" }, children: "\u2014" })) : (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.3)" }, children: "No demo" })), item.demoInfo?.release_date && (SP_JSX.jsx("span", { style: { fontSize: "10px", color: "rgba(255,255,255,0.4)", marginLeft: item.demoInfo.release_date !== "To Be Announced" ? "11%" : "9%" }, children: item.demoInfo.release_date })), SP_JSX.jsx("div", { className: "demo-finder-store-btn", title: "Open store page", style: fullPageStoreBtnStyle, onClick: (e) => { e.stopPropagation(); once(() => openGame(item.appid, item.name)); }, children: SP_JSX.jsx(FaExternalLinkAlt, { size: 9 }) })] })] }, item.appid) }, slot))), !scanning && totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { ...fullPagePaginationStyle, gridColumn: "1 / -1" }, children: [SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusClassName: "demo-finder-btn-focus", focusWithinClassName: "demo-finder-btn-focus", onActivate: () => once(() => changePage(-1)), children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: page === 0 ? 0.4 : 1 }, onClick: () => once(() => changePage(-1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "13px" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { className: "demo-finder-btn", focusClassName: "demo-finder-btn-focus", focusWithinClassName: "demo-finder-btn-focus", onActivate: () => once(() => changePage(1)), children: SP_JSX.jsxs("div", { style: { ...fullPageBtnStyle, opacity: page >= totalPages - 1 ? 0.4 : 1 }, onClick: () => once(() => changePage(1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
 };
 // ---- Main Content ----
 function Content() {
@@ -1105,6 +1191,9 @@ function Content() {
             finally {
                 setResolvingNames(false);
             }
+            // After names are resolved, run an image resolution pass so cards on the
+            // full-page view have images immediately — before a demo scan completes.
+            resolveImagelessGames(resolvedItems, setCacheVersion).catch((e) => console.warn("[Demo Finder] Post-load image resolution pass failed:", e));
             // After wishlist is fully loaded and names are resolved:
             // apply cached demo results (if any), otherwise auto-scan.
             if (Object.keys(cachedDemoResults).length > 0) {

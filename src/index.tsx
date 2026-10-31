@@ -6,6 +6,8 @@ import {
   staticClasses,
   Focusable,
   TextField,
+  GamepadButton,
+  GamepadEvent,
 } from "@decky/ui";
 import {
   callable,
@@ -114,9 +116,36 @@ const focusHighlightCSS = `
     border-color: rgba(255, 255, 255, 0.6) !important;
     background: rgba(255, 255, 255, 0.15) !important;
   }
+  /* Highlight for full-page cards: controller focus (gpfocus / gpfocuswithin),
+     keyboard focus and mouse hover all use the same look. */
+  .demo-finder-card {
+    transition: box-shadow 0.12s ease, background 0.12s ease;
+  }
+  .demo-finder-card:hover,
+  .demo-finder-card:focus,
+  .demo-finder-card:focus-within,
+  .demo-finder-card.gpfocus,
+  .demo-finder-card.gpfocuswithin,
   .demo-finder-card-focus {
-    outline: 2px solid rgba(100, 180, 255, 0.8) !important;
+    outline: 3px solid rgba(100, 180, 255, 0.95) !important;
+    outline-offset: 2px;
     border-radius: 6px;
+    background: rgba(100, 180, 255, 0.18) !important;
+    box-shadow: 0 0 16px 2px rgba(100, 180, 255, 0.55);
+  }
+  /* Highlight for header + pagination buttons (wrapper holds the focus classes) */
+  .demo-finder-btn:hover > div,
+  .demo-finder-btn:focus > div,
+  .demo-finder-btn:focus-within > div,
+  .demo-finder-btn.gpfocus > div,
+  .demo-finder-btn.gpfocuswithin > div,
+  .demo-finder-btn-focus > div {
+    border-color: rgba(100, 180, 255, 0.95) !important;
+    background: rgba(100, 180, 255, 0.3) !important;
+    box-shadow: 0 0 10px 1px rgba(100, 180, 255, 0.55);
+  }
+  .demo-finder-store-btn:hover {
+    background: rgba(255, 255, 255, 0.25) !important;
   }
 `;
 
@@ -195,6 +224,12 @@ const fullPageDemoBadgeStyle: React.CSSProperties = {
   fontWeight: "bold",
   background: "linear-gradient(135deg, #1a9fff 0%, #0070d1 100%)",
   color: "#fff", flexShrink: 0, marginLeft: "2%",
+};
+
+const fullPageStoreBtnStyle: React.CSSProperties = {
+  marginLeft: "auto", display: "inline-flex", alignItems: "center",
+  padding: "3px 6px", borderRadius: "3px", flexShrink: 0,
+  background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.8)",
 };
 
 const fullPageStatusStyle: React.CSSProperties = {
@@ -625,12 +660,25 @@ function getBumperLabels(type: ControllerType): { prev: string; next: string } {
 }
 
 // ---- Bumper Navigation Hook ----
+// L1/R1 (LB/RB) page navigation. Two input paths feed the same handler:
+//  1. Steam's native gamepad events (onButtonDown on a Focusable) - this is what
+//     works on Steam Deck / Big Picture, where navigator.getGamepads() is often empty.
+//  2. The browser Gamepad API as a fallback for setups where it does report buttons.
+// A short de-duplication window stops both paths from turning one press into two pages.
 function useBumperNavigation(
   setPage: React.Dispatch<React.SetStateAction<number>>,
   totalPages: number
 ) {
   const totalPagesRef = useRef(totalPages);
+  const lastChangeRef = useRef(0);
   useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
+
+  const changePage = useCallback((delta: number) => {
+    const now = Date.now();
+    if (now - lastChangeRef.current < 200) return;
+    lastChangeRef.current = now;
+    setPage((p) => Math.max(0, Math.min(totalPagesRef.current - 1, p + delta)));
+  }, [setPage]);
 
   useEffect(() => {
     const prevButtons: Record<number, boolean> = { 4: false, 5: false };
@@ -641,21 +689,27 @@ function useBumperNavigation(
         if (!gp) continue;
         // L1/LB (button 4) = previous page
         const l1 = gp.buttons[4]?.pressed ?? false;
-        if (l1 && !prevButtons[4]) {
-          setPage((p) => Math.max(0, p - 1));
-        }
+        if (l1 && !prevButtons[4]) changePage(-1);
         prevButtons[4] = l1;
         // R1/RB (button 5) = next page
         const r1 = gp.buttons[5]?.pressed ?? false;
-        if (r1 && !prevButtons[5]) {
-          setPage((p) => Math.min(totalPagesRef.current - 1, p + 1));
-        }
+        if (r1 && !prevButtons[5]) changePage(1);
         prevButtons[5] = r1;
         break; // Only use the first connected gamepad
       }
     }, 100);
     return () => clearInterval(interval);
-  }, [setPage]);
+  }, [changePage]);
+
+  /** Handler for Focusable.onButtonDown - attach to a container so it sees bumpers from any focused child. */
+  const onButtonDown = useCallback((evt: GamepadEvent) => {
+    if (evt?.detail?.is_repeat) return;
+    const button = evt?.detail?.button;
+    if (button === GamepadButton.BUMPER_LEFT) changePage(-1);
+    else if (button === GamepadButton.BUMPER_RIGHT) changePage(1);
+  }, [changePage]);
+
+  return { changePage, onButtonDown };
 }
 
 /** Polls the first connected gamepad and returns controller-appropriate bumper labels. */
@@ -733,7 +787,17 @@ const FullPageWishlistWithDemos: FC = () => {
   );
   const demosFoundCount = wishlist.filter((item) => item.demoInfo?.has_demo).length;
 
-  useBumperNavigation(setPage, totalPages);
+  const { changePage, onButtonDown: onBumperDown } = useBumperNavigation(setPage, totalPages);
+
+  // De-duplicates activation: depending on the input path (A button / mouse click)
+  // both onActivate and onClick can fire for a single press.
+  const lastActivateRef = useRef(0);
+  const once = (fn: () => void) => {
+    const now = Date.now();
+    if (now - lastActivateRef.current < 400) return;
+    lastActivateRef.current = now;
+    fn();
+  };
 
   const nextSortMode = (mode: SortMode): SortMode => {
     if (mode === "alpha") return "date_added";
@@ -873,8 +937,14 @@ const FullPageWishlistWithDemos: FC = () => {
     }
   };
 
+  // A button / click: play the demo when there is one, otherwise open the store page.
+  const primaryAction = (item: WishlistItemWithDemo) => {
+    if (item.demoInfo?.has_demo && item.demoInfo.demo_appid) openDemo(item.demoInfo, item.name);
+    else openGame(item.appid, item.name);
+  };
+
   return (
-    <div style={fullPageStyle}>
+    <Focusable style={fullPageStyle} onButtonDown={onBumperDown}>
       <style>{focusHighlightCSS}</style>
       {/* Header */}
       <div style={fullPageHeaderStyle}>
@@ -894,7 +964,7 @@ const FullPageWishlistWithDemos: FC = () => {
             <span style={{ color: "rgba(255,255,255,0.6)", fontSize: "12px", alignSelf: "center", whiteSpace: "nowrap" }}>
               Current Sort Method: {sortLabel[sortBy]}
             </span>
-            <Focusable onActivate={cycleSortMode}>
+            <Focusable className="demo-finder-btn" focusWithinClassName="demo-finder-btn-focus" focusClassName="demo-finder-btn-focus" onActivate={cycleSortMode}>
               <div style={fullPageBtnStyle} onClick={cycleSortMode}>
                 <FaSortAlphaDown size={12} style={{ marginRight: "6px" }} />
                 {sortLabel[nextSortMode(sortBy)]}
@@ -903,7 +973,7 @@ const FullPageWishlistWithDemos: FC = () => {
 
             {/* Filter toggle */}
             {hasScanned && demosFoundCount > 0 && (
-              <Focusable onActivate={() => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }}>
+              <Focusable className="demo-finder-btn" focusWithinClassName="demo-finder-btn-focus" focusClassName="demo-finder-btn-focus" onActivate={() => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }}>
                 <div
                   style={filterDemoOnly ? fullPageActiveBtnStyle : fullPageBtnStyle}
                   onClick={() => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }}
@@ -914,7 +984,7 @@ const FullPageWishlistWithDemos: FC = () => {
             )}
 
             {/* Scan button */}
-            <Focusable onActivate={scanning ? undefined : scanForDemos}>
+            <Focusable className="demo-finder-btn" focusWithinClassName="demo-finder-btn-focus" focusClassName="demo-finder-btn-focus" onActivate={scanning ? undefined : scanForDemos}>
               <div
                 style={{ ...fullPageBtnStyle, opacity: scanning ? 0.6 : 1 }}
                 onClick={scanning ? undefined : scanForDemos}
@@ -944,13 +1014,23 @@ const FullPageWishlistWithDemos: FC = () => {
           {scanning && (
             <div style={fullPageStatusStyle}>{scanProgress || "Scanning for demos..."}</div>
           )}
-          {!scanning && pagedItems.map((item) => (
+          {!scanning && pagedItems.map((item, slot) => (
             <Focusable
-              key={item.appid}
+              // Keyed by grid slot (not appid) so the focused slot survives a page change
+              // and L1/R1 keep working without the controller losing its place.
+              key={slot}
+              className="demo-finder-card"
               style={fullPageCardStyle}
+              focusClassName="demo-finder-card-focus"
               focusWithinClassName="demo-finder-card-focus"
-              onActivate={() => openGame(item.appid, item.name)}
+              onActivate={() => once(() => primaryAction(item))}
+              onClick={() => once(() => primaryAction(item))}
+              onSecondaryButton={() => openGame(item.appid, item.name)}
+              onOKActionDescription={item.demoInfo?.has_demo ? "Play Demo" : "Store Page"}
+              onSecondaryActionDescription="Store Page"
             >
+              {/* Keyed by appid so per-image fallback state resets when a slot shows a different game */}
+              <Fragment key={item.appid}>
               <img
                 src={item.demoInfo?.header_image || capsuleImageCache[String(item.appid)] || `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/capsule_616x353.jpg`}
                 alt={item.name}
@@ -1042,17 +1122,9 @@ const FullPageWishlistWithDemos: FC = () => {
               <div style={fullPageCardBodyStyle}>
                 {item.demoInfo ? (
                   item.demoInfo.has_demo ? (
-                    <Focusable
-                      style={{ display: "contents" }}
-                      onActivate={() => { openDemo(item.demoInfo!, item.name); }}
-                    >
-                      <div
-                        style={fullPageDemoBadgeStyle}
-                        onClick={(e) => { e.stopPropagation(); openDemo(item.demoInfo!, item.name); }}
-                      >
-                        <FaGamepad size={9} /> Play Demo
-                      </div>
-                    </Focusable>
+                    <div style={fullPageDemoBadgeStyle}>
+                      <FaGamepad size={9} /> Play Demo
+                    </div>
                   ) : (
                     <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>No demo</span>
                   )
@@ -1066,7 +1138,17 @@ const FullPageWishlistWithDemos: FC = () => {
                     {item.demoInfo.release_date}
                   </span>
                 )}
+                {/* Mouse shortcut to the store page (controller: X button) */}
+                <div
+                  className="demo-finder-store-btn"
+                  title="Open store page"
+                  style={fullPageStoreBtnStyle}
+                  onClick={(e) => { e.stopPropagation(); once(() => openGame(item.appid, item.name)); }}
+                >
+                  <FaExternalLinkAlt size={9} />
+                </div>
               </div>
+              </Fragment>
             </Focusable>
           ))}
 
@@ -1076,25 +1158,29 @@ const FullPageWishlistWithDemos: FC = () => {
               style={{ ...fullPagePaginationStyle, gridColumn: "1 / -1" }}
             >
               <Focusable
-                onActivate={() => setPage(Math.max(0, page - 1))}
-                style={{ ...fullPageBtnStyle, opacity: page === 0 ? 0.3 : 1 }}
+                className="demo-finder-btn"
+                focusClassName="demo-finder-btn-focus"
+                focusWithinClassName="demo-finder-btn-focus"
+                onActivate={() => once(() => changePage(-1))}
               >
-                <div onClick={() => setPage(Math.max(0, page - 1))}>{bumperLabels.prev} ◀ Prev</div>
+                <div style={{ ...fullPageBtnStyle, opacity: page === 0 ? 0.4 : 1 }} onClick={() => once(() => changePage(-1))}>{bumperLabels.prev} ◀ Prev</div>
               </Focusable>
               <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "13px" }}>
                 {page + 1} / {totalPages}
               </span>
               <Focusable
-                onActivate={() => setPage(Math.min(totalPages - 1, page + 1))}
-                style={{ ...fullPageBtnStyle, opacity: page >= totalPages - 1 ? 0.3 : 1 }}
+                className="demo-finder-btn"
+                focusClassName="demo-finder-btn-focus"
+                focusWithinClassName="demo-finder-btn-focus"
+                onActivate={() => once(() => changePage(1))}
               >
-                <div onClick={() => setPage(Math.min(totalPages - 1, page + 1))}>Next ▶ {bumperLabels.next}</div>
+                <div style={{ ...fullPageBtnStyle, opacity: page >= totalPages - 1 ? 0.4 : 1 }} onClick={() => once(() => changePage(1))}>Next ▶ {bumperLabels.next}</div>
               </Focusable>
             </Focusable>
           )}
         </Focusable>
       )}
-    </div>
+    </Focusable>
   );
 };
 

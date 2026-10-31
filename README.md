@@ -1,4 +1,22 @@
-Simply download the zip from this github page, drop it into your plugins folder, and use the mod to get your Steam Wishlist API key for grabbing your wishlist! 
+# Demo Finder (Decky Loader plugin)
+
+Finds which games on your Steam wishlist have demos and lets you jump straight to them. Works on Steam Deck (Decky Loader) and Windows.
+
+## Latest release: v1.1.0
+- Selection highlight restored in the full wishlist view (controller **and** mouse)
+- L1 / R1 (LB / RB) page navigation works again
+- See [release notes](release-notes/v1.1.0.md) and the [Releases page](https://github.com/SilvertongueRED/decky-demo-finder/releases) for downloads
+
+## Controls (full wishlist view)
+| Input | Action |
+|---|---|
+| D-pad / stick / mouse hover | Highlight a card |
+| **A** / click | Play demo (or open store page if there is no demo) |
+| **X** / store icon on card | Open store page |
+| **L1 / R1** (LB / RB) | Previous / next page |
+
+## Install
+Download the latest zip from the [Releases page](https://github.com/SilvertongueRED/decky-demo-finder/releases), drop it into your plugins folder, and use the mod to get your Steam Wishlist API key for grabbing your wishlist! 
 
 1. <img width="2049" height="1079" alt="image" src="https://github.com/user-attachments/assets/0e1ce2cb-0cb7-4ea6-8cce-9f09f043f5bb" />
 
