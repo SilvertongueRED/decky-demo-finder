@@ -36,4 +36,4 @@ Download the latest zip from the [Releases page](https://github.com/Silvertongue
 
 8. <img width="872" height="1132" alt="image" src="https://github.com/user-attachments/assets/10b728ee-e9a3-462a-a551-f4db69b0a797" />
 
-9. <img width="3729" height="1854" alt="image" src="https://github.com/user-attachments/assets/5b8f29e5-a665-4e04-8028-aeff40ddbccb" />
+9. <img width="1920" alt="Demo Finder full wishlist view" src="docs/full-wishlist-view.png" />
