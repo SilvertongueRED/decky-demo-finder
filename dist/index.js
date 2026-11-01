@@ -580,24 +580,32 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
         setSaving(false);
     };
     const openKeyPage = async () => {
-        let opened = false;
-        try {
-            opened = await openUrlInBrowser(API_KEY_HELP_URL);
-        }
-        catch (_e) { /* backend call failed */ }
-        if (!opened) {
+        const isWindows = /Windows/i.test(navigator.userAgent || "");
+        const viaBackend = async () => {
+            try { return !!(await openUrlInBrowser(API_KEY_HELP_URL)); } catch (_e) { return false; }
+        };
+        const viaSystemBrowser = () => {
             try {
                 const sc = window.SteamClient;
-                if (sc?.System?.OpenInSystemBrowser) {
-                    sc.System.OpenInSystemBrowser(API_KEY_HELP_URL);
-                }
-                else {
-                    DFL.Navigation.NavigateToExternalWeb(API_KEY_HELP_URL);
-                }
+                if (sc?.System?.OpenInSystemBrowser) { sc.System.OpenInSystemBrowser(API_KEY_HELP_URL); return true; }
             }
-            catch (_e) {
-                DFL.Navigation.NavigateToExternalWeb(API_KEY_HELP_URL);
-            }
+            catch (_e) { /* fall through */ }
+            return false;
+        };
+        const viaSteamWeb = () => {
+            try { DFL.Navigation.NavigateToExternalWeb(API_KEY_HELP_URL); return true; } catch (_e) { return false; }
+        };
+        // Windows desktop: OS default browser first. Steam Deck / Linux: the backend's
+        // xdg-open "succeeds" but opens no window in Game Mode, so use Steam's own
+        // browser first and the backend only as a last resort.
+        let opened = false;
+        if (isWindows)
+            opened = (await viaBackend()) || viaSystemBrowser() || viaSteamWeb();
+        else
+            opened = viaSteamWeb() || viaSystemBrowser() || (await viaBackend());
+        if (!opened) {
+            toaster.toast({ title: "Demo Finder", body: "Couldn't open the link. Visit: " + API_KEY_HELP_URL });
+            return;
         }
         DFL.Navigation.CloseSideMenus();
     };

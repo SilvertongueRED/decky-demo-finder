@@ -586,21 +586,29 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
   };
 
   const openKeyPage = async () => {
-    let opened = false;
-    try {
-      opened = await openUrlInBrowser(API_KEY_HELP_URL);
-    } catch (_e) { /* backend call failed */ }
-    if (!opened) {
+    const isWindows = /Windows/i.test(navigator.userAgent || "");
+    const viaBackend = async (): Promise<boolean> => {
+      try { return !!(await openUrlInBrowser(API_KEY_HELP_URL)); } catch (_e) { return false; }
+    };
+    const viaSystemBrowser = (): boolean => {
       try {
         const sc = (window as any).SteamClient;
-        if (sc?.System?.OpenInSystemBrowser) {
-          sc.System.OpenInSystemBrowser(API_KEY_HELP_URL);
-        } else {
-          Navigation.NavigateToExternalWeb(API_KEY_HELP_URL);
-        }
-      } catch (_e) {
-        Navigation.NavigateToExternalWeb(API_KEY_HELP_URL);
-      }
+        if (sc?.System?.OpenInSystemBrowser) { sc.System.OpenInSystemBrowser(API_KEY_HELP_URL); return true; }
+      } catch (_e) { /* fall through */ }
+      return false;
+    };
+    const viaSteamWeb = (): boolean => {
+      try { Navigation.NavigateToExternalWeb(API_KEY_HELP_URL); return true; } catch (_e) { return false; }
+    };
+    // Windows desktop: OS default browser first. Steam Deck / Linux: the backend's
+    // xdg-open "succeeds" but opens no window in Game Mode, so use Steam's own
+    // browser first and the backend only as a last resort.
+    let opened = false;
+    if (isWindows) opened = (await viaBackend()) || viaSystemBrowser() || viaSteamWeb();
+    else opened = viaSteamWeb() || viaSystemBrowser() || (await viaBackend());
+    if (!opened) {
+      toaster.toast({ title: "Demo Finder", body: "Couldn't open the link. Visit: " + API_KEY_HELP_URL });
+      return;
     }
     Navigation.CloseSideMenus();
   };
