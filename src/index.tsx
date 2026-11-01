@@ -27,6 +27,8 @@ const getApiKey = callable<[], string>("get_api_key");
 const openUrlInBrowser = callable<[url: string], boolean>("open_url_in_browser");
 const readClipboardBackend = callable<[], string>("read_clipboard");
 const grabKeyFromSteamPage = callable<[], string>("grab_key_from_steam_page");
+const getLastWishlistError = callable<[], string>("get_last_wishlist_error");
+const validateApiKey = callable<[api_key: string, steam_id: string], { ok: boolean; status: number | null; detail: string }>("validate_api_key");
 const resolveNamesBatch = callable<[appids: number[]], Record<string, string>>("resolve_names_batch");
 const saveDemoCache = callable<[cache_data: Record<string, DemoInfo>], boolean>("save_demo_cache");
 const loadDemoCache = callable<[], Record<string, DemoInfo>>("load_demo_cache");
@@ -629,7 +631,12 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
       setSaving(false);
       return;
     }
-    toaster.toast({ title: "Demo Finder", body: "API key saved! Refreshing wishlist..." });
+    let check = "";
+    try {
+      const r = await validateApiKey(value, getSteamId());
+      check = r.ok ? " Steam accepted the key." : ` Steam check failed: ${r.detail}.`;
+    } catch (_e) { /* validation is best-effort */ }
+    toaster.toast({ title: "Demo Finder", body: `API key saved (ends in ${value.slice(-4)}).${check} Refreshing wishlist...` });
     setKeyValue("");
     const input = wrapperRef.current?.querySelector("input");
     if (input) input.value = "";
@@ -1549,7 +1556,9 @@ function Content() {
         } else if (result === "NO_STEAM_ID") {
           setError("Could not detect your Steam ID. Make sure you are logged in.");
         } else if (result === "FETCH_FAILED") {
-          setError("Failed to load wishlist. Check that your API key is valid and your wishlist is set to Public.");
+          let detail = "";
+          try { detail = await getLastWishlistError(); } catch (_e) { /* ignore */ }
+          setError(`Failed to load wishlist${detail ? ` (${detail})` : ""}. Check that your API key is valid and your wishlist is set to Public.`);
           setShowSetup(true);
           setWishlist([]);
         }

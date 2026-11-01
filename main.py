@@ -59,6 +59,7 @@ class Plugin:
     _app_name_cache_time: float = 0
     _APP_NAME_CACHE_TTL = 3600  # 1 hour
     _MAX_CONCURRENT_REQUESTS = 5
+    _last_wishlist_error = ""  # human readable reason the last authenticated wishlist fetch failed
     _APP_LIST_FETCH_TIMEOUT = 25  # seconds — GetAppList response is ~4 MB
     _MIN_APP_LIST_SIZE = 1000  # sanity check: reject suspiciously small responses
     # IStoreService/GetAppList/v1 pagination controls
@@ -302,6 +303,30 @@ class Plugin:
 
         decky.logger.info("appdetails name resolution complete")
 
+    async def get_last_wishlist_error(self) -> str:
+        """Why the last authenticated wishlist fetch failed ("" if unknown)."""
+        return self._last_wishlist_error or ""
+
+    async def validate_api_key(self, api_key: str, steam_id: str) -> dict:
+        """Ask Steam whether an API key is accepted, so the UI can say why a load fails."""
+        url = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
+        params = {"key": (api_key or "").strip(), "steamids": steam_id or "76561197960435530"}
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, params=params, headers=_DEFAULT_HEADERS) as resp:
+                    status = resp.status
+            if status == 200:
+                result = {"ok": True, "status": status, "detail": "Steam accepted the key"}
+            elif status in (401, 403):
+                result = {"ok": False, "status": status, "detail": f"Steam rejected the key (HTTP {status})"}
+            else:
+                result = {"ok": False, "status": status, "detail": f"Steam replied HTTP {status}"}
+        except Exception as e:
+            result = {"ok": False, "status": None, "detail": f"{type(e).__name__}: {e}"}
+        decky.logger.info(f"validate_api_key: {result['detail']}")
+        return result
+
     # ---- Settings management ----
 
     async def set_api_key(self, api_key: str) -> bool:
@@ -459,14 +484,17 @@ class Plugin:
             f"?key={api_key}&steamid={steam_id}"
         )
         headers = dict(_DEFAULT_HEADERS)
+        self._last_wishlist_error = ""
         try:
             async with session.get(url, headers=headers) as resp:
                 if resp.status == 403:
+                    self._last_wishlist_error = "Steam rejected the API key (HTTP 403)"
                     decky.logger.warning(
                         "GetWishlist returned 403 Forbidden — API key may be invalid"
                     )
                     return None
                 if resp.status != 200:
+                    self._last_wishlist_error = f"Steam replied HTTP {resp.status}"
                     decky.logger.warning(
                         f"GetWishlist (with key) returned status {resp.status}"
                     )
@@ -474,6 +502,7 @@ class Plugin:
 
                 text = await resp.text()
                 if not text or not text.strip():
+                    self._last_wishlist_error = "Steam sent an empty reply"
                     decky.logger.warning("GetWishlist (with key) returned empty body")
                     return None
 
@@ -495,9 +524,15 @@ class Plugin:
                 decky.logger.info(
                     f"GetWishlist (with key) returned {len(results)} items"
                 )
+                if not results:
+                    self._last_wishlist_error = (
+                        "Steam accepted the request but returned 0 wishlist items "
+                        "(wishlist empty or not visible to this account)"
+                    )
                 return results if results else None
 
         except Exception as e:
+            self._last_wishlist_error = f"{type(e).__name__}: {e}"
             decky.logger.warning(f"GetWishlist (with key) failed: {e}")
             return None
 
