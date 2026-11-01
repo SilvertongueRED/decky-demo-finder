@@ -26,6 +26,7 @@ const setApiKey = callable<[api_key: string], boolean>("set_api_key");
 const getApiKey = callable<[], string>("get_api_key");
 const openUrlInBrowser = callable<[url: string], boolean>("open_url_in_browser");
 const readClipboardBackend = callable<[], string>("read_clipboard");
+const grabKeyFromSteamPage = callable<[], string>("grab_key_from_steam_page");
 const resolveNamesBatch = callable<[appids: number[]], Record<string, string>>("resolve_names_batch");
 const saveDemoCache = callable<[cache_data: Record<string, DemoInfo>], boolean>("save_demo_cache");
 const loadDemoCache = callable<[], Record<string, DemoInfo>>("load_demo_cache");
@@ -600,7 +601,21 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
   }, [keyValue]);
 
   const handleSave = async () => {
-    const value = getInputValue().trim();
+    await saveKeyValue(getInputValue().trim());
+  };
+
+  // Put a key into the text field (React state and the real DOM input).
+  const fillInput = (key: string) => {
+    setKeyValue(key);
+    const input = wrapperRef.current?.querySelector("input");
+    if (input) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (setter) setter.call(input, key); else input.value = key;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  };
+
+  const saveKeyValue = async (value: string) => {
     if (!value) {
       toaster.toast({ title: "Demo Finder", body: "Please enter an API key first." });
       return;
@@ -622,22 +637,30 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
     setSaving(false);
   };
 
+  const grabKeyFromPage = async () => {
+    let key = "";
+    try { key = extractApiKey(await grabKeyFromSteamPage()); } catch (e) { console.warn("[Demo Finder] grab key failed:", e); }
+    if (!key) {
+      toaster.toast({
+        title: "Demo Finder",
+        body: "No key found on an open Steam page. Open Get Your Free API Key, register or view your key so it is on screen, then try again.",
+      });
+      return;
+    }
+    fillInput(key);
+    await saveKeyValue(key);
+  };
+
   const pasteFromClipboard = async () => {
     const key = extractApiKey(await readClipboardText());
     if (!key) {
       toaster.toast({
         title: "Demo Finder",
-        body: "No Steam API key found on the clipboard. Copy the 32 character key from the Steam page first.",
+        body: "Could not read a key from the clipboard here. Use Grab Key from Steam Page, or long-press the key field and tap Paste.",
       });
       return;
     }
-    setKeyValue(key);
-    const input = wrapperRef.current?.querySelector("input");
-    if (input) {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      if (setter) setter.call(input, key); else input.value = key;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    }
+    fillInput(key);
     toaster.toast({ title: "Demo Finder", body: `Key pasted (ends in ${key.slice(-4)}). Press Save API Key.` });
   };
 
@@ -684,6 +707,13 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
+        <ButtonItem layout="below" onClick={grabKeyFromPage}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
+            <FaKey size={12} /> Grab Key from Steam Page
+          </div>
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
         <ButtonItem layout="below" onClick={pasteFromClipboard}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
             📋 Paste Key from Clipboard
@@ -716,9 +746,9 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
       <div style={helpTextStyle}>
         Go to steamcommunity.com/dev/apikey to register a key.
         Enter any domain name (e.g. "localhost").
-        Copy the key on that page (long-press it, or long-press and Select All, then Copy),
-        come back here and press Paste Key from Clipboard. The key is found automatically
-        even if extra text was copied with it.
+        Once your key is showing on that page, come back here and press Grab Key from Steam
+        Page: it reads the key for you and saves it, no copying needed. Paste Key from
+        Clipboard is a backup if you copied the key yourself.
         Your wishlist must also be set to Public.
       </div>
     </PanelSection>

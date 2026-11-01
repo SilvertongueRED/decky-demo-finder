@@ -5,6 +5,7 @@ import json as json_module
 import os
 import platform
 import random
+import re
 import subprocess
 import time
 from settings import SettingsManager
@@ -391,6 +392,59 @@ class Plugin:
                     continue
         decky.logger.warning("read_clipboard: no clipboard tool returned data")
         return ""
+
+    async def grab_key_from_steam_page(self) -> str:
+        """Read the Steam Web API key straight off the open Steam browser page.
+
+        Uses Steam's local CEF debugger (the same port Decky itself uses) to find the
+        steamcommunity.com/dev/apikey tab and read its text, so the user never has to
+        copy and paste anything. Returns "" when no such page / key is found.
+        """
+        base = "http://localhost:8080"
+        try:
+            timeout = aiohttp.ClientTimeout(total=8)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(f"{base}/json") as resp:
+                    targets = await resp.json(content_type=None)
+                candidates = [
+                    t for t in targets
+                    if "steamcommunity.com/dev" in (t.get("url") or "") and t.get("webSocketDebuggerUrl")
+                ]
+                if not candidates:
+                    seen = [(t.get("title", ""), (t.get("url") or "")[:80]) for t in targets]
+                    decky.logger.info(f"grab_key: no steamcommunity.com/dev tab among {len(targets)} targets: {seen}")
+                    return ""
+                for t in candidates:
+                    text = await self._cdp_eval(
+                        session, t["webSocketDebuggerUrl"],
+                        "document.body ? document.body.innerText : ''",
+                    )
+                    if not text:
+                        continue
+                    m = re.search(r"Key:\s*([0-9A-Fa-f]{32})", text) or re.search(r"\b[0-9A-Fa-f]{32}\b", text)
+                    if m:
+                        decky.logger.info("grab_key: found a key on the Steam page")
+                        return m.group(1) if m.lastindex else m.group(0)
+                decky.logger.info("grab_key: Steam dev page found but no 32 character key on it")
+        except Exception as e:
+            decky.logger.warning(f"grab_key_from_steam_page failed: {e}")
+        return ""
+
+    async def _cdp_eval(self, session, ws_url: str, expression: str):
+        """Evaluate a JS expression in a CEF target over the Chrome DevTools protocol."""
+        async with session.ws_connect(ws_url, timeout=5) as ws:
+            await ws.send_json({
+                "id": 1,
+                "method": "Runtime.evaluate",
+                "params": {"expression": expression, "returnByValue": True},
+            })
+            while True:
+                msg = await asyncio.wait_for(ws.receive(), timeout=5)
+                if msg.type != aiohttp.WSMsgType.TEXT:
+                    return None
+                data = json_module.loads(msg.data)
+                if data.get("id") == 1:
+                    return (data.get("result", {}).get("result", {}) or {}).get("value")
 
     # ---- Wishlist fetching strategies ----
 
