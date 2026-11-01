@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release zip
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p pkg/decky-demo-finder
+          cp -r dist main.py plugin.json package.json LICENSE README.md pkg/decky-demo-finder/
+          (cd pkg && zip -qr "../decky-demo-finder-${VERSION}.zip" decky-demo-finder)
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          gh release create "${VERSION}" "decky-demo-finder-${VERSION}.zip" \
+            --title "${VERSION}" \
+            --notes-file "release-notes/${VERSION}.md"
