@@ -6,6 +6,7 @@ import os
 import platform
 import random
 import re
+import ssl
 import subprocess
 import time
 from settings import SettingsManager
@@ -45,6 +46,50 @@ _DEFAULT_HEADERS = {
     "User-Agent": _build_user_agent(),
     "Accept": "application/json, text/plain, */*",
 }
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    """Build a verifying SSL context that works inside Decky's bundled Python.
+
+    On Steam Deck, Decky's Python often cannot find the system CA certificates
+    (CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate), so every
+    HTTPS call to Steam fails. Point it at the system CA bundle explicitly.
+    Verification stays ON; this only tells Python where the trusted CAs live.
+    """
+    candidates = [
+        os.environ.get("SSL_CERT_FILE") or "",
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/ca-certificates/extracted/tls-ca-bundle.pem",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ssl/cert.pem",
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            try:
+                ctx = ssl.create_default_context(cafile=path)
+                decky.logger.info(f"Using CA bundle: {path}")
+                return ctx
+            except Exception as e:
+                decky.logger.warning(f"CA bundle {path} unusable: {e}")
+    try:
+        import certifi  # type: ignore
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        decky.logger.info("Using certifi CA bundle")
+        return ctx
+    except Exception:
+        pass
+    decky.logger.info("Using default SSL context (no explicit CA bundle found)")
+    return ssl.create_default_context()
+
+
+_SSL_CONTEXT = _build_ssl_context()
+
+
+def _new_session(**kwargs) -> "aiohttp.ClientSession":
+    """aiohttp session that verifies HTTPS using the CA bundle found above."""
+    if "connector" not in kwargs:
+        kwargs["connector"] = aiohttp.TCPConnector(ssl=_SSL_CONTEXT)
+    return aiohttp.ClientSession(**kwargs)
 
 
 class Plugin:
@@ -313,7 +358,7 @@ class Plugin:
         params = {"key": (api_key or "").strip(), "steamids": steam_id or "76561197960435530"}
         try:
             timeout = aiohttp.ClientTimeout(total=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with _new_session(timeout=timeout) as session:
                 async with session.get(url, params=params, headers=_DEFAULT_HEADERS) as resp:
                     status = resp.status
             if status == 200:
@@ -428,7 +473,7 @@ class Plugin:
         base = "http://localhost:8080"
         try:
             timeout = aiohttp.ClientTimeout(total=8)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with _new_session(timeout=timeout) as session:
                 async with session.get(f"{base}/json") as resp:
                     targets = await resp.json(content_type=None)
                 candidates = [
@@ -735,7 +780,7 @@ class Plugin:
             f"has_api_key: {bool(api_key)})"
         )
 
-        async with aiohttp.ClientSession() as session:
+        async with _new_session() as session:
             # Pre-load the app-name cache and fetch names from the wishlistdata
             # endpoint in parallel with the wishlist item fetch.  The
             # wishlistdata endpoint is the same source that Steam's own wishlist
@@ -861,7 +906,7 @@ class Plugin:
         }
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with _new_session() as session:
                 url = f"https://store.steampowered.com/api/appdetails?appids={appid}&cc=us&l=english"
                 async with session.get(url) as resp:
                     if resp.status != 200:
@@ -1045,8 +1090,8 @@ class Plugin:
         semaphore = asyncio.Semaphore(8)
         rate_limit_counter = [0]
 
-        connector = aiohttp.TCPConnector(limit_per_host=8)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        connector = aiohttp.TCPConnector(limit_per_host=8, ssl=_SSL_CONTEXT)
+        async with _new_session(connector=connector) as session:
             async def _check(aid, sem):
                 try:
                     return str(aid), await asyncio.wait_for(
@@ -1120,7 +1165,7 @@ class Plugin:
         """
         semaphore = asyncio.Semaphore(3)
 
-        async with aiohttp.ClientSession() as session:
+        async with _new_session() as session:
             async def _fetch_name(appid):
                 url = f"https://store.steampowered.com/api/appdetails?appids={appid}&cc=us&l=english"
                 async with semaphore:
@@ -1262,7 +1307,7 @@ class Plugin:
         # Eagerly pre-load the app-name cache so it is warm before the first
         # wishlist request arrives.
         try:
-            async with aiohttp.ClientSession() as session:
+            async with _new_session() as session:
                 await self._ensure_app_names_loaded(session)
         except Exception as e:
             decky.logger.warning(f"Startup app-name cache pre-load failed: {e}")
