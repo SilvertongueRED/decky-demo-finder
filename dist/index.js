@@ -113,6 +113,7 @@ const getApiKey = callable("get_api_key");
 const openUrlInBrowser = callable("open_url_in_browser");
 const readClipboardBackend = callable("read_clipboard");
 const grabKeyFromSteamPage = callable("grab_key_from_steam_page");
+const getPlatform = callable("get_platform");
 const getLastWishlistError = callable("get_last_wishlist_error");
 const validateApiKey = callable("validate_api_key");
 const resolveNamesBatch = callable("resolve_names_batch");
@@ -561,6 +562,16 @@ function extractApiKey(text) {
     const t = (text || "").trim();
     return /^[A-Za-z0-9]{16,64}$/.test(t) ? t : "";
 }
+/** True on Windows. Asks the backend (reliable); falls back to the user agent. */
+async function detectWindows() {
+    try {
+        const p = await getPlatform();
+        if (p)
+            return /windows/i.test(p);
+    }
+    catch (_e) { /* backend unavailable */ }
+    return /Windows/i.test(navigator.userAgent || "");
+}
 const ApiKeySetup = ({ hasKey, onKeySaved }) => {
     const [saving, setSaving] = SP_REACT.useState(false);
     const [keyValue, setKeyValue] = SP_REACT.useState("");
@@ -676,7 +687,7 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
         toaster.toast({ title: "Demo Finder", body: `Key pasted (ends in ${key.slice(-4)}). Press Save API Key.` });
     };
     const openKeyPage = async () => {
-        const isWindows = /Windows/i.test(navigator.userAgent || "");
+        const isWindows = await detectWindows();
         const viaBackend = async () => {
             try { return !!(await openUrlInBrowser(API_KEY_HELP_URL)); } catch (_e) { return false; }
         };

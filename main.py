@@ -388,6 +388,10 @@ class Plugin:
         """Load the user's Steam Web API key from plugin settings."""
         return self.settings.getSetting("steam_api_key", "")
 
+    async def get_platform(self) -> str:
+        """Return the OS the plugin backend runs on (Windows, Linux, Darwin)."""
+        return platform.system()
+
     async def open_url_in_browser(self, url: str) -> bool:
         """Open a URL in the system's default external browser."""
         if not url or not url.startswith(("https://", "http://")):
@@ -397,7 +401,19 @@ class Plugin:
             system = platform.system()
             if system == "Windows":
                 # No xdg-open on Windows; os.startfile uses the default browser.
-                os.startfile(url)  # type: ignore[attr-defined]
+                try:
+                    os.startfile(url)  # type: ignore[attr-defined]
+                except Exception as e1:
+                    decky.logger.warning(f"os.startfile failed ({e1}), trying webbrowser")
+                    import webbrowser
+                    if not webbrowser.open(url):
+                        decky.logger.warning("webbrowser.open failed, trying cmd start")
+                        await asyncio.create_subprocess_exec(
+                            "cmd", "/c", "start", "", url,
+                            stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL,
+                            creationflags=0x08000000,
+                        )
             else:
                 opener = "open" if system == "Darwin" else "xdg-open"
                 proc = await asyncio.create_subprocess_exec(

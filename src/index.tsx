@@ -27,6 +27,7 @@ const getApiKey = callable<[], string>("get_api_key");
 const openUrlInBrowser = callable<[url: string], boolean>("open_url_in_browser");
 const readClipboardBackend = callable<[], string>("read_clipboard");
 const grabKeyFromSteamPage = callable<[], string>("grab_key_from_steam_page");
+const getPlatform = callable<[], string>("get_platform");
 const getLastWishlistError = callable<[], string>("get_last_wishlist_error");
 const validateApiKey = callable<[api_key: string, steam_id: string], { ok: boolean; status: number | null; detail: string }>("validate_api_key");
 const resolveNamesBatch = callable<[appids: number[]], Record<string, string>>("resolve_names_batch");
@@ -564,6 +565,15 @@ function extractApiKey(text: string): string {
   return /^[A-Za-z0-9]{16,64}$/.test(t) ? t : "";
 }
 
+/** True on Windows. Asks the backend (reliable); falls back to the user agent. */
+async function detectWindows(): Promise<boolean> {
+  try {
+    const p = await getPlatform();
+    if (p) return /windows/i.test(p);
+  } catch (_e) { /* backend unavailable */ }
+  return /Windows/i.test(navigator.userAgent || "");
+}
+
 const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, onKeySaved }) => {
   const [saving, setSaving] = useState(false);
   const [keyValue, setKeyValue] = useState("");
@@ -672,7 +682,7 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
   };
 
   const openKeyPage = async () => {
-    const isWindows = /Windows/i.test(navigator.userAgent || "");
+    const isWindows = await detectWindows();
     const viaBackend = async (): Promise<boolean> => {
       try { return !!(await openUrlInBrowser(API_KEY_HELP_URL)); } catch (_e) { return false; }
     };

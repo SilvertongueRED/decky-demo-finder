@@ -2,8 +2,9 @@
 
 Finds which games on your Steam wishlist have demos and lets you jump straight to them. Works on Steam Deck (Decky Loader) and Windows.
 
-## Latest release: v1.3.5
-- Fix: Steam Deck wishlist loading failed with a certificate error (unable to get local issuer certificate); the plugin now uses the system CA bundle
+## Latest release: v1.3.6
+- Fix: Windows now detects the OS from the backend and has extra fallbacks for opening the API key page
+- v1.3.5 Fix: Steam Deck wishlist loading failed with a certificate error (unable to get local issuer certificate); the plugin now uses the system CA bundle
 - v1.3.4 New: saving an API key now checks it with Steam and tells you the result, and a failed wishlist load shows the real reason (HTTP status, network error, or empty result)
 - v1.3.3 New: **Grab Key from Steam Page** button: open the key page from the plugin, then press it to read and save your Steam API key with no copying or pasting (controller friendly, Steam Deck)
 - v1.3.2 New: **Paste Key from Clipboard** button in the API key section, so you can get your Steam API key in without the virtual keyboard paste. The key is found even if extra text was copied with it
@@ -13,7 +14,7 @@ Finds which games on your Steam wishlist have demos and lets you jump straight t
 - v1.2.1: Play Demo badge and release dates no longer cut off on cards ("To be announced" now shows as TBA)
 - v1.2.0: press **Y** (Triangle on PlayStation) to change the sort method, with an on-screen hint
 - v1.1.0: selection highlight restored (controller **and** mouse) and L1 / R1 (LB / RB) page navigation fixed
-- See [release notes](release-notes/v1.3.5.md) and the [Releases page](https://github.com/SilvertongueRED/decky-demo-finder/releases) for downloads
+- See [release notes](release-notes/v1.3.6.md) and the [Releases page](https://github.com/SilvertongueRED/decky-demo-finder/releases) for downloads
 
 ## Controls (full wishlist view)
 | Input | Action |
