@@ -55,9 +55,11 @@ function GenIcon(data) {
 }
 function IconBase(props) {
   var elem = conf => {
-    var attr = props.attr,
-      size = props.size,
-      title = props.title,
+    var {
+        attr,
+        size,
+        title
+      } = props,
       svgProps = _objectWithoutProperties(props, _excluded);
     var computedSize = size || conf.size || "1em";
     var className;
@@ -603,30 +605,70 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
                     ? "✅ API key is configured. You can update it below if needed."
                     : "⚠️ A Steam Web API key is required to access your wishlist. It's free to register." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { ref: wrapperRef, children: SP_JSX.jsx(DFL.TextField, { label: "Steam Web API Key", value: keyValue, onChange: (e) => setKeyValue(e.target.value), bIsPassword: !showKey }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowKey(!showKey), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [showKey ? SP_JSX.jsx(FaEyeSlash, { size: 12 }) : SP_JSX.jsx(FaEye, { size: 12 }), showKey ? "Hide Key" : "Show Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save API Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Go to steamcommunity.com/dev/apikey to register a key. Enter any domain name (e.g. \"localhost\"). Your wishlist must also be set to Public." })] }));
 };
+const CONTROLLER_STYLE_KEY = "demoFinder.controllerStyle";
+const CONTROLLER_GLYPHS = {
+    xbox: { prev: "LB", next: "RB", sort: "Y" },
+    playstation: { prev: "L1", next: "R1", sort: "△" },
+    switch: { prev: "L", next: "R", sort: "X" },
+};
+const CONTROLLER_STYLE_NAMES = { auto: "Auto", xbox: "Xbox / Steam", playstation: "PlayStation", switch: "Switch" };
+const CONTROLLER_STYLE_ORDER = ["auto", "xbox", "playstation", "switch"];
+let controllerStyleOverride = "auto";
+try {
+    const saved = window.localStorage?.getItem(CONTROLLER_STYLE_KEY);
+    if (saved && CONTROLLER_STYLE_ORDER.includes(saved))
+        controllerStyleOverride = saved;
+}
+catch (_e) { /* storage unavailable - stay on auto */ }
+let detectedControllerType = "xbox";
+const controllerListeners = new Set();
+function notifyControllerListeners() {
+    controllerListeners.forEach((fn) => { try {
+        fn();
+    }
+    catch (_e) { /* listener unmounted */ } });
+}
+function cycleControllerStyle() {
+    const idx = CONTROLLER_STYLE_ORDER.indexOf(controllerStyleOverride);
+    controllerStyleOverride = CONTROLLER_STYLE_ORDER[(idx + 1) % CONTROLLER_STYLE_ORDER.length];
+    try {
+        window.localStorage?.setItem(CONTROLLER_STYLE_KEY, controllerStyleOverride);
+    }
+    catch (_e) { /* best-effort persistence */ }
+    notifyControllerListeners();
+}
 function detectControllerType(id) {
-    const lower = id.toLowerCase();
-    if (lower.includes("054c") || // Sony vendor ID
-        lower.includes("playstation") ||
-        lower.includes("dualshock") ||
-        lower.includes("dualsense"))
+    const lower = (id || "").toLowerCase();
+    // Chromium: "... (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)"; Firefox: "054c-0ce6-DualSense ..."
+    const m = lower.match(/vendor:\s*([0-9a-f]{4})/) || lower.match(/^([0-9a-f]{4})-[0-9a-f]{4}/);
+    const vendor = m ? m[1] : "";
+    if (vendor === "057e")
+        return "switch"; // Nintendo
+    if (vendor === "054c")
+        return "playstation"; // Sony
+    if (vendor === "045e" || vendor === "28de")
+        return "xbox"; // Microsoft / Valve (Steam Controller, Steam Deck)
+    if (/nintendo|switch|joy-?con|pro controller/.test(lower))
+        return "switch";
+    if (/playstation|dualshock|dualsense|ps[345] controller|wireless controller/.test(lower))
         return "playstation";
-    if (lower.includes("045e") || // Microsoft vendor ID
-        lower.includes("xbox") ||
-        lower.includes("xinput") ||
-        lower.includes("28de") || // Valve vendor ID
-        lower.includes("steam") ||
-        lower.includes("valve"))
+    if (/xbox|xinput|steam|valve|deck/.test(lower))
         return "xbox";
     return "unknown";
 }
-function getBumperLabels(type) {
-    if (type === "xbox")
-        return { prev: "LB", next: "RB", sort: "Y" };
-    // PlayStation: Triangle is the top face button
-    if (type === "playstation")
-        return { prev: "L1", next: "R1", sort: "△" };
-    // Unknown defaults to L1/R1 + Y (Steam Deck uses L1/R1 labeling)
-    return { prev: "L1", next: "R1", sort: "Y" };
+/** The connected gamepad that was used most recently. */
+function pickActiveGamepad() {
+    const pads = navigator.getGamepads?.();
+    if (!pads)
+        return null;
+    let best = null;
+    for (const gp of pads) {
+        if (!gp || gp.connected === false)
+            continue;
+        if (!best || gp.timestamp > best.timestamp)
+            best = gp;
+    }
+    return best;
 }
 // ---- Bumper Navigation Hook ----
 // L1/R1 (LB/RB) page navigation. Two input paths feed the same handler:
@@ -681,26 +723,36 @@ function useBumperNavigation(setPage, totalPages) {
     }, [changePage]);
     return { changePage, onButtonDown };
 }
-/** Polls the first connected gamepad and returns controller-appropriate bumper labels. */
+/** Returns the glyph labels (prev / next / sort) for the controller in use, plus the style mode. */
 function useControllerLabels() {
-    const [labels, setLabels] = SP_REACT.useState({ prev: "L1", next: "R1", sort: "Y" });
+    const [, forceRender] = SP_REACT.useState(0);
     SP_REACT.useEffect(() => {
-        const interval = setInterval(() => {
-            const gamepads = navigator.getGamepads?.();
-            if (!gamepads)
+        const rerender = () => forceRender((n) => n + 1);
+        controllerListeners.add(rerender);
+        const refresh = () => {
+            const gp = pickActiveGamepad();
+            if (!gp)
                 return;
-            for (const gp of gamepads) {
-                if (!gp)
-                    continue;
-                const type = detectControllerType(gp.id);
-                const newLabels = getBumperLabels(type);
-                setLabels((cur) => cur.prev === newLabels.prev && cur.next === newLabels.next && cur.sort === newLabels.sort ? cur : newLabels);
-                return;
+            const detected = detectControllerType(gp.id);
+            const next = detected === "unknown" ? "xbox" : detected;
+            if (next !== detectedControllerType) {
+                detectedControllerType = next;
+                notifyControllerListeners();
             }
-        }, 500);
-        return () => clearInterval(interval);
+        };
+        refresh();
+        const interval = setInterval(refresh, 500);
+        window.addEventListener("gamepadconnected", refresh);
+        window.addEventListener("gamepaddisconnected", refresh);
+        return () => {
+            clearInterval(interval);
+            controllerListeners.delete(rerender);
+            window.removeEventListener("gamepadconnected", refresh);
+            window.removeEventListener("gamepaddisconnected", refresh);
+        };
     }, []);
-    return labels;
+    const type = controllerStyleOverride === "auto" ? detectedControllerType : controllerStyleOverride;
+    return { ...CONTROLLER_GLYPHS[type], type, mode: controllerStyleOverride };
 }
 // ---- Full-Page Wishlist with Demo Integration ----
 const FullPageWishlistWithDemos = () => {
@@ -1341,7 +1393,7 @@ function Content() {
     const openFullPage = () => {
         DFL.Navigation.Navigate("/demo-finder-wishlist");
     };
-    return (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs(DFL.PanelSection, { title: "Wishlist Demo Finder", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openFullPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaGamepad, { size: 14 }), " Open Full Wishlist View"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setOptionsCollapsed(!optionsCollapsed), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [optionsCollapsed ? SP_JSX.jsx(FaChevronDown, { size: 12 }) : SP_JSX.jsx(FaChevronUp, { size: 12 }), optionsCollapsed ? "Show Options" : "Hide Options"] }) }) }), !optionsCollapsed && (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: loadWishlist, disabled: loading || scanning, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSyncAlt, { size: 14 }), loading ? "Loading..." : "Refresh Wishlist"] }) }) }), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => scanForDemos(), disabled: scanning || loading, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSearch, { size: 14 }), scanning ? "Scanning..." : hasScanned ? `Re-scan ${wishlist.length} Games` : `Scan ${wishlist.length} Games for Demos`] }) }) })), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `Show All (${wishlist.length})` : `Show Only Demos (${demosFoundCount})` }) })), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: cycleSortMode, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 14 }), "Sort: ", sortLabel[nextSortMode(sortBy)]] }) }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowSetup(!showSetup), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), showSetup ? "Hide Setup" : (hasApiKey ? "Update Steam API Key" : "⚠️ Set Up Steam API Key")] }) }) })] }))] }), error && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: { ...statusStyle, color: "#ff6b6b" }, children: error }) })), showSetup && (SP_JSX.jsx(ApiKeySetup, { hasKey: hasApiKey, onKeySaved: handleKeySaved })), scanning && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: scanProgress }) })), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Loading wishlist..." }) })), resolvingNames && !loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Resolving game names..." }) })), !loading && wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsxs("div", { style: { color: "rgba(255,255,255,0.6)", fontSize: "12px", textAlign: "center", padding: "4px 0" }, children: ["Current Sort Method: ", sortLabel[sortBy]] }) })), !loading && wishlist.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: filterDemoOnly ? `Demos (${demosFoundCount})` : `Wishlist (${displayItems.length})`, children: [SP_JSX.jsx("div", { style: containerStyle, children: pagedItems.map((item) => (SP_JSX.jsxs(DFL.Focusable, { style: itemContainerStyle, focusWithinClassName: "demo-finder-item-focus", children: [SP_JSX.jsx("div", { style: gameNameStyle, title: item.name, children: item.name }), SP_JSX.jsxs("div", { style: { display: "flex", gap: "4px", alignItems: "center" }, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsx(DemoButton, { demoInfo: item.demoInfo, gameName: item.name })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" }))) : hasScanned ? (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "\u2014" })), SP_JSX.jsx(GameStoreLinkButton, { appid: item.appid, gameName: item.name })] })] }, item.appid))) }), totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { display: "flex", justifyContent: "center", gap: "12px", padding: "8px 0 12px 0" }, children: [SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.max(0, page - 1)), style: { ...pageBtnStyle, opacity: page === 0 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.max(0, page - 1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "12px", alignSelf: "center" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.min(totalPages - 1, page + 1)), style: { ...pageBtnStyle, opacity: page >= totalPages - 1 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.min(totalPages - 1, page + 1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
+    return (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx("style", { children: focusHighlightCSS }), SP_JSX.jsxs(DFL.PanelSection, { title: "Wishlist Demo Finder", children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openFullPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaGamepad, { size: 14 }), " Open Full Wishlist View"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setOptionsCollapsed(!optionsCollapsed), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [optionsCollapsed ? SP_JSX.jsx(FaChevronDown, { size: 12 }) : SP_JSX.jsx(FaChevronUp, { size: 12 }), optionsCollapsed ? "Show Options" : "Hide Options"] }) }) }), !optionsCollapsed && (SP_JSX.jsxs(SP_REACT.Fragment, { children: [SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: loadWishlist, disabled: loading || scanning, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSyncAlt, { size: 14 }), loading ? "Loading..." : "Refresh Wishlist"] }) }) }), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => scanForDemos(), disabled: scanning || loading, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSearch, { size: 14 }), scanning ? "Scanning..." : hasScanned ? `Re-scan ${wishlist.length} Games` : `Scan ${wishlist.length} Games for Demos`] }) }) })), hasScanned && demosFoundCount > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => { setFilterDemoOnly(!filterDemoOnly); setPage(0); }, children: filterDemoOnly ? `Show All (${wishlist.length})` : `Show Only Demos (${demosFoundCount})` }) })), wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: cycleSortMode, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaSortAlphaDown, { size: 14 }), "Sort: ", sortLabel[nextSortMode(sortBy)]] }) }) })), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: cycleControllerStyle, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaGamepad, { size: 14 }), "Button Icons: ", CONTROLLER_STYLE_NAMES[bumperLabels.mode], bumperLabels.mode === "auto" ? ` (${CONTROLLER_STYLE_NAMES[bumperLabels.type]})` : ""] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowSetup(!showSetup), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), showSetup ? "Hide Setup" : (hasApiKey ? "Update Steam API Key" : "⚠️ Set Up Steam API Key")] }) }) })] }))] }), error && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: { ...statusStyle, color: "#ff6b6b" }, children: error }) })), showSetup && (SP_JSX.jsx(ApiKeySetup, { hasKey: hasApiKey, onKeySaved: handleKeySaved })), scanning && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: scanProgress }) })), loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Loading wishlist..." }) })), resolvingNames && !loading && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsx("div", { style: statusStyle, children: "Resolving game names..." }) })), !loading && wishlist.length > 0 && (SP_JSX.jsx(DFL.PanelSection, { children: SP_JSX.jsxs("div", { style: { color: "rgba(255,255,255,0.6)", fontSize: "12px", textAlign: "center", padding: "4px 0" }, children: ["Current Sort Method: ", sortLabel[sortBy]] }) })), !loading && wishlist.length > 0 && (SP_JSX.jsxs(DFL.PanelSection, { title: filterDemoOnly ? `Demos (${demosFoundCount})` : `Wishlist (${displayItems.length})`, children: [SP_JSX.jsx("div", { style: containerStyle, children: pagedItems.map((item) => (SP_JSX.jsxs(DFL.Focusable, { style: itemContainerStyle, focusWithinClassName: "demo-finder-item-focus", children: [SP_JSX.jsx("div", { style: gameNameStyle, title: item.name, children: item.name }), SP_JSX.jsxs("div", { style: { display: "flex", gap: "4px", alignItems: "center" }, children: [item.demoInfo ? (item.demoInfo.has_demo ? (SP_JSX.jsx(DemoButton, { demoInfo: item.demoInfo, gameName: item.name })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" }))) : hasScanned ? (SP_JSX.jsx("span", { style: noDemoStyle, children: "No demo" })) : (SP_JSX.jsx("span", { style: noDemoStyle, children: "\u2014" })), SP_JSX.jsx(GameStoreLinkButton, { appid: item.appid, gameName: item.name })] })] }, item.appid))) }), totalPages > 1 && (SP_JSX.jsxs(DFL.Focusable, { style: { display: "flex", justifyContent: "center", gap: "12px", padding: "8px 0 12px 0" }, children: [SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.max(0, page - 1)), style: { ...pageBtnStyle, opacity: page === 0 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.max(0, page - 1)), children: [bumperLabels.prev, " \u25C0 Prev"] }) }), SP_JSX.jsxs("span", { style: { color: "rgba(255,255,255,0.5)", fontSize: "12px", alignSelf: "center" }, children: [page + 1, " / ", totalPages] }), SP_JSX.jsx(DFL.Focusable, { onActivate: () => setPage(Math.min(totalPages - 1, page + 1)), style: { ...pageBtnStyle, opacity: page >= totalPages - 1 ? 0.3 : 1 }, focusWithinClassName: "demo-finder-page-btn-focus", children: SP_JSX.jsxs("div", { onClick: () => setPage(Math.min(totalPages - 1, page + 1)), children: ["Next \u25B6 ", bumperLabels.next] }) })] }))] }))] }));
 }
 // ---- Startup scan (runs in background when plugin initializes) ----
 async function startupScan() {

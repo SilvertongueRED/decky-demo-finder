@@ -651,36 +651,69 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
   );
 };
 
-// ---- Controller type detection ----
-type ControllerType = "playstation" | "xbox" | "unknown";
+// ---- Controller glyphs ----
+// Button labels follow the controller family:
+//   Xbox / Steam Controller / Steam Deck : LB / RB, sort = Y
+//   PlayStation                           : L1 / R1, sort = Triangle
+//   Nintendo Switch                       : L / R,   sort = X
+// "Auto" watches the active gamepad; the Quick Access menu can force a style
+// because Steam Input often presents every pad as a virtual Xbox 360 controller.
+type ControllerType = "playstation" | "xbox" | "switch" | "unknown";
+type ControllerStyle = "auto" | "xbox" | "playstation" | "switch";
+type ControllerLabels = { prev: string; next: string; sort: string; type: Exclude<ControllerType, "unknown">; mode: ControllerStyle };
+
+const CONTROLLER_STYLE_KEY = "demoFinder.controllerStyle";
+const CONTROLLER_GLYPHS: Record<Exclude<ControllerType, "unknown">, { prev: string; next: string; sort: string }> = {
+  xbox: { prev: "LB", next: "RB", sort: "Y" },
+  playstation: { prev: "L1", next: "R1", sort: "△" },
+  switch: { prev: "L", next: "R", sort: "X" },
+};
+const CONTROLLER_STYLE_NAMES: Record<ControllerStyle, string> = { auto: "Auto", xbox: "Xbox / Steam", playstation: "PlayStation", switch: "Switch" };
+const CONTROLLER_STYLE_ORDER: ControllerStyle[] = ["auto", "xbox", "playstation", "switch"];
+
+let controllerStyleOverride: ControllerStyle = "auto";
+try {
+  const saved = window.localStorage?.getItem(CONTROLLER_STYLE_KEY) as ControllerStyle | null;
+  if (saved && CONTROLLER_STYLE_ORDER.includes(saved)) controllerStyleOverride = saved;
+} catch (_e) { /* storage unavailable - stay on auto */ }
+let detectedControllerType: Exclude<ControllerType, "unknown"> = "xbox";
+const controllerListeners = new Set<() => void>();
+
+function notifyControllerListeners() {
+  controllerListeners.forEach((fn) => { try { fn(); } catch (_e) { /* listener unmounted */ } });
+}
+
+function cycleControllerStyle() {
+  const idx = CONTROLLER_STYLE_ORDER.indexOf(controllerStyleOverride);
+  controllerStyleOverride = CONTROLLER_STYLE_ORDER[(idx + 1) % CONTROLLER_STYLE_ORDER.length];
+  try { window.localStorage?.setItem(CONTROLLER_STYLE_KEY, controllerStyleOverride); } catch (_e) { /* best-effort persistence */ }
+  notifyControllerListeners();
+}
 
 function detectControllerType(id: string): ControllerType {
-  const lower = id.toLowerCase();
-  if (
-    lower.includes("054c") || // Sony vendor ID
-    lower.includes("playstation") ||
-    lower.includes("dualshock") ||
-    lower.includes("dualsense")
-  ) return "playstation";
-  if (
-    lower.includes("045e") || // Microsoft vendor ID
-    lower.includes("xbox") ||
-    lower.includes("xinput") ||
-    lower.includes("28de") || // Valve vendor ID
-    lower.includes("steam") ||
-    lower.includes("valve")
-  ) return "xbox";
+  const lower = (id || "").toLowerCase();
+  // Chromium: "... (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)"; Firefox: "054c-0ce6-DualSense ..."
+  const m = lower.match(/vendor:\s*([0-9a-f]{4})/) || lower.match(/^([0-9a-f]{4})-[0-9a-f]{4}/);
+  const vendor = m ? m[1] : "";
+  if (vendor === "057e") return "switch"; // Nintendo
+  if (vendor === "054c") return "playstation"; // Sony
+  if (vendor === "045e" || vendor === "28de") return "xbox"; // Microsoft / Valve (Steam Controller, Steam Deck)
+  if (/nintendo|switch|joy-?con|pro controller/.test(lower)) return "switch";
+  if (/playstation|dualshock|dualsense|ps[345] controller|wireless controller/.test(lower)) return "playstation";
+  if (/xbox|xinput|steam|valve|deck/.test(lower)) return "xbox";
   return "unknown";
 }
 
-type ControllerLabels = { prev: string; next: string; sort: string };
-
-function getBumperLabels(type: ControllerType): ControllerLabels {
-  if (type === "xbox") return { prev: "LB", next: "RB", sort: "Y" };
-  // PlayStation: Triangle is the top face button
-  if (type === "playstation") return { prev: "L1", next: "R1", sort: "△" };
-  // Unknown defaults to L1/R1 + Y (Steam Deck uses L1/R1 labeling)
-  return { prev: "L1", next: "R1", sort: "Y" };
+/** The connected gamepad that was used most recently. */
+function pickActiveGamepad(): Gamepad | null {
+  const pads = navigator.getGamepads?.();
+  if (!pads) return null;
+  let best: Gamepad | null = null;
+  for (const gp of pads) {
+    if (!gp || gp.connected === false) continue;
+    if (!best || gp.timestamp > best.timestamp) best = gp;
+  }
+  return best;
 }
 
 // ---- Bumper Navigation Hook ----
@@ -736,28 +769,37 @@ function useBumperNavigation(
   return { changePage, onButtonDown };
 }
 
-/** Polls the first connected gamepad and returns controller-appropriate bumper labels. */
+/** Returns the glyph labels (prev / next / sort) for the controller in use, plus the style mode. */
 function useControllerLabels(): ControllerLabels {
-  const [labels, setLabels] = useState<ControllerLabels>({ prev: "L1", next: "R1", sort: "Y" });
+  const [, forceRender] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const gamepads = navigator.getGamepads?.();
-      if (!gamepads) return;
-      for (const gp of gamepads) {
-        if (!gp) continue;
-        const type = detectControllerType(gp.id);
-        const newLabels = getBumperLabels(type);
-        setLabels((cur) =>
-          cur.prev === newLabels.prev && cur.next === newLabels.next && cur.sort === newLabels.sort ? cur : newLabels
-        );
-        return;
+    const rerender = () => forceRender((n) => n + 1);
+    controllerListeners.add(rerender);
+    const refresh = () => {
+      const gp = pickActiveGamepad();
+      if (!gp) return;
+      const detected = detectControllerType(gp.id);
+      const next = detected === "unknown" ? "xbox" : detected;
+      if (next !== detectedControllerType) {
+        detectedControllerType = next;
+        notifyControllerListeners();
       }
-    }, 500);
-    return () => clearInterval(interval);
+    };
+    refresh();
+    const interval = setInterval(refresh, 500);
+    window.addEventListener("gamepadconnected", refresh);
+    window.addEventListener("gamepaddisconnected", refresh);
+    return () => {
+      clearInterval(interval);
+      controllerListeners.delete(rerender);
+      window.removeEventListener("gamepadconnected", refresh);
+      window.removeEventListener("gamepaddisconnected", refresh);
+    };
   }, []);
 
-  return labels;
+  const type = controllerStyleOverride === "auto" ? detectedControllerType : controllerStyleOverride;
+  return { ...CONTROLLER_GLYPHS[type], type, mode: controllerStyleOverride };
 }
 
 // ---- Full-Page Wishlist with Demo Integration ----
@@ -1680,6 +1722,16 @@ function Content() {
                 </ButtonItem>
               </PanelSectionRow>
             )}
+
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={cycleControllerStyle}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
+                  <FaGamepad size={14} />
+                  Button Icons: {CONTROLLER_STYLE_NAMES[bumperLabels.mode]}
+                  {bumperLabels.mode === "auto" ? ` (${CONTROLLER_STYLE_NAMES[bumperLabels.type]})` : ""}
+                </div>
+              </ButtonItem>
+            </PanelSectionRow>
 
             <PanelSectionRow>
               <ButtonItem layout="below" onClick={() => setShowSetup(!showSetup)}>

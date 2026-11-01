@@ -323,12 +323,18 @@ class Plugin:
             decky.logger.warning(f"open_url_in_browser blocked non-HTTP URL: {url!r}")
             return False
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "xdg-open", url,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
+            system = platform.system()
+            if system == "Windows":
+                # No xdg-open on Windows; os.startfile uses the default browser.
+                os.startfile(url)  # type: ignore[attr-defined]
+            else:
+                opener = "open" if system == "Darwin" else "xdg-open"
+                proc = await asyncio.create_subprocess_exec(
+                    opener, url,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await proc.wait()
             decky.logger.info(f"Opened URL in external browser: {url}")
             return True
         except Exception as e:
@@ -1062,7 +1068,7 @@ class Plugin:
             settings_dir = decky.DECKY_PLUGIN_SETTINGS_DIR
             os.makedirs(settings_dir, exist_ok=True)
             cache_path = os.path.join(settings_dir, "demo_cache.json")
-            with open(cache_path, "w") as f:
+            with open(cache_path, "w", encoding="utf-8") as f:
                 json_module.dump(cache_data, f)
             decky.logger.info(f"Demo cache saved ({len(cache_data)} entries)")
             return True
@@ -1075,7 +1081,7 @@ class Plugin:
         try:
             cache_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "demo_cache.json")
             if os.path.exists(cache_path):
-                with open(cache_path, "r") as f:
+                with open(cache_path, "r", encoding="utf-8") as f:
                     data = json_module.load(f)
                 decky.logger.info(f"Demo cache loaded ({len(data)} entries)")
                 return data
@@ -1099,7 +1105,7 @@ class Plugin:
         try:
             legacy_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
             if os.path.exists(legacy_path):
-                with open(legacy_path, "r") as f:
+                with open(legacy_path, "r", encoding="utf-8") as f:
                     legacy = json_module.load(f)
                 migrated = False
                 for key in ("steam_api_key",):
