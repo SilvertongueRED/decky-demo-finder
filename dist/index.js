@@ -111,6 +111,7 @@ const checkDemosBatch = callable("check_demos_batch");
 const setApiKey = callable("set_api_key");
 const getApiKey = callable("get_api_key");
 const openUrlInBrowser = callable("open_url_in_browser");
+const readClipboardBackend = callable("read_clipboard");
 const resolveNamesBatch = callable("resolve_names_batch");
 const saveDemoCache = callable("save_demo_cache");
 const loadDemoCache = callable("load_demo_cache");
@@ -516,6 +517,47 @@ const GameStoreLinkButton = ({ appid, gameName }) => {
     return (SP_JSX.jsx(DFL.Focusable, { style: { display: "inline-flex" }, onActivate: handleClick, children: SP_JSX.jsx("div", { style: { ...demoBadgeStyle, background: "rgba(255,255,255,0.1)" }, onClick: handleClick, title: "Open store page", children: SP_JSX.jsx(FaExternalLinkAlt, { size: 10 }) }) }));
 };
 // ---- API Key Setup ----
+/**
+ * Read the clipboard from inside the Quick Access menu. Tries the browser API
+ * first, then a hidden textarea paste, then the backend (xclip / wl-paste on
+ * Linux, PowerShell on Windows), because the Steam UI webview often blocks the
+ * first two.
+ */
+async function readClipboardText() {
+    try {
+        const t = await navigator.clipboard?.readText?.();
+        if (t)
+            return String(t);
+    }
+    catch (_e) { /* blocked, try next */ }
+    try {
+        const ta = document.createElement("textarea");
+        ta.style.cssText = "position:fixed;opacity:0;left:-1000px;top:0;";
+        document.body.appendChild(ta);
+        ta.focus();
+        const ok = document.execCommand("paste");
+        const v = ta.value;
+        document.body.removeChild(ta);
+        if (ok && v)
+            return v;
+    }
+    catch (_e) { /* blocked, try next */ }
+    try {
+        const t = await readClipboardBackend();
+        if (t)
+            return t;
+    }
+    catch (_e) { /* backend unavailable */ }
+    return "";
+}
+/** Pull a Steam Web API key (32 hex characters) out of whatever was copied. */
+function extractApiKey(text) {
+    const m = (text || "").match(/\b[0-9A-Fa-f]{32}\b/);
+    if (m)
+        return m[0];
+    const t = (text || "").trim();
+    return /^[A-Za-z0-9]{16,64}$/.test(t) ? t : "";
+}
 const ApiKeySetup = ({ hasKey, onKeySaved }) => {
     const [saving, setSaving] = SP_REACT.useState(false);
     const [keyValue, setKeyValue] = SP_REACT.useState("");
@@ -579,6 +621,27 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
         catch (_e) { /* best-effort post-save callback */ }
         setSaving(false);
     };
+    const pasteFromClipboard = async () => {
+        const key = extractApiKey(await readClipboardText());
+        if (!key) {
+            toaster.toast({
+                title: "Demo Finder",
+                body: "No Steam API key found on the clipboard. Copy the 32 character key from the Steam page first.",
+            });
+            return;
+        }
+        setKeyValue(key);
+        const input = wrapperRef.current?.querySelector("input");
+        if (input) {
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+            if (setter)
+                setter.call(input, key);
+            else
+                input.value = key;
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        toaster.toast({ title: "Demo Finder", body: `Key pasted (ends in ${key.slice(-4)}). Press Save API Key.` });
+    };
     const openKeyPage = async () => {
         const isWindows = /Windows/i.test(navigator.userAgent || "");
         const viaBackend = async () => {
@@ -611,7 +674,7 @@ const ApiKeySetup = ({ hasKey, onKeySaved }) => {
     };
     return (SP_JSX.jsxs(DFL.PanelSection, { title: "Steam API Key Setup", children: [SP_JSX.jsx("div", { style: helpTextStyle, children: hasKey
                     ? "✅ API key is configured. You can update it below if needed."
-                    : "⚠️ A Steam Web API key is required to access your wishlist. It's free to register." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { ref: wrapperRef, children: SP_JSX.jsx(DFL.TextField, { label: "Steam Web API Key", value: keyValue, onChange: (e) => setKeyValue(e.target.value), bIsPassword: !showKey }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowKey(!showKey), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [showKey ? SP_JSX.jsx(FaEyeSlash, { size: 12 }) : SP_JSX.jsx(FaEye, { size: 12 }), showKey ? "Hide Key" : "Show Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save API Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Go to steamcommunity.com/dev/apikey to register a key. Enter any domain name (e.g. \"localhost\"). Your wishlist must also be set to Public." })] }));
+                    : "⚠️ A Steam Web API key is required to access your wishlist. It's free to register." }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: openKeyPage, children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [SP_JSX.jsx(FaKey, { size: 12 }), " Get Your Free API Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: pasteFromClipboard, children: SP_JSX.jsx("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: "\ud83d\udccb Paste Key from Clipboard" }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx("div", { ref: wrapperRef, children: SP_JSX.jsx(DFL.TextField, { label: "Steam Web API Key", value: keyValue, onChange: (e) => setKeyValue(e.target.value), bIsPassword: !showKey }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: () => setShowKey(!showKey), children: SP_JSX.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }, children: [showKey ? SP_JSX.jsx(FaEyeSlash, { size: 12 }) : SP_JSX.jsx(FaEye, { size: 12 }), showKey ? "Hide Key" : "Show Key"] }) }) }), SP_JSX.jsx(DFL.PanelSectionRow, { children: SP_JSX.jsx(DFL.ButtonItem, { layout: "below", onClick: handleSave, disabled: saving, children: saving ? "Saving..." : "Save API Key" }) }), SP_JSX.jsx("div", { style: helpTextStyle, children: "Go to steamcommunity.com/dev/apikey to register a key. Enter any domain name (e.g. \"localhost\"). Copy the key on that page (long-press it, or long-press and Select All, then Copy), come back here and press Paste Key from Clipboard. The key is found automatically even if extra text was copied with it. Your wishlist must also be set to Public." })] }));
 };
 const CONTROLLER_STYLE_KEY = "demoFinder.controllerStyle";
 const CONTROLLER_GLYPHS = {

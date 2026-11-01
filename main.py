@@ -341,6 +341,57 @@ class Plugin:
             decky.logger.error(f"open_url_in_browser failed: {e}")
             return False
 
+    async def read_clipboard(self) -> str:
+        """Best-effort read of the system clipboard (powers the Paste from Clipboard button)."""
+        system = platform.system()
+        extra = {}
+        if system == "Windows":
+            cmds = [["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"]]
+            extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        elif system == "Darwin":
+            cmds = [["pbpaste"]]
+        else:
+            cmds = [
+                ["wl-paste", "--no-newline"],
+                ["xclip", "-selection", "clipboard", "-o"],
+                ["xsel", "--clipboard", "--output"],
+            ]
+        envs = [dict(os.environ)]
+        if system == "Linux":
+            # Decky runs as a service, so DISPLAY is often unset; gamescope's
+            # Xwayland is normally :0 (sometimes :1).
+            for disp in (":0", ":1"):
+                e = dict(os.environ)
+                e["DISPLAY"] = disp
+                envs.append(e)
+        for env in envs:
+            for cmd in cmds:
+                proc = None
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env,
+                        **extra,
+                    )
+                    out, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
+                    if proc.returncode == 0 and out:
+                        decky.logger.info(f"read_clipboard ok via {cmd[0]}")
+                        return out.decode("utf-8", "ignore")[:100000]
+                except (FileNotFoundError, PermissionError, asyncio.TimeoutError, OSError):
+                    if proc is not None and proc.returncode is None:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                    continue
+                except Exception as e:
+                    decky.logger.warning(f"read_clipboard via {cmd[0]} failed: {e}")
+                    continue
+        decky.logger.warning("read_clipboard: no clipboard tool returned data")
+        return ""
+
     # ---- Wishlist fetching strategies ----
 
     async def _fetch_wishlist_with_key(self, session, steam_id: str, api_key: str):

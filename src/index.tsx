@@ -25,6 +25,7 @@ const checkDemosBatch = callable<[appids: number[]], Record<string, DemoInfo>>("
 const setApiKey = callable<[api_key: string], boolean>("set_api_key");
 const getApiKey = callable<[], string>("get_api_key");
 const openUrlInBrowser = callable<[url: string], boolean>("open_url_in_browser");
+const readClipboardBackend = callable<[], string>("read_clipboard");
 const resolveNamesBatch = callable<[appids: number[]], Record<string, string>>("resolve_names_batch");
 const saveDemoCache = callable<[cache_data: Record<string, DemoInfo>], boolean>("save_demo_cache");
 const loadDemoCache = callable<[], Record<string, DemoInfo>>("load_demo_cache");
@@ -524,6 +525,42 @@ const GameStoreLinkButton: FC<{ appid: number; gameName: string }> = ({ appid, g
 };
 
 // ---- API Key Setup ----
+/**
+ * Read the clipboard from inside the Quick Access menu. Tries the browser API
+ * first, then a hidden textarea paste, then the backend (xclip / wl-paste on
+ * Linux, PowerShell on Windows), because the Steam UI webview often blocks the
+ * first two.
+ */
+async function readClipboardText(): Promise<string> {
+  try {
+    const t = await (navigator as any).clipboard?.readText?.();
+    if (t) return String(t);
+  } catch (_e) { /* blocked, try next */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.style.cssText = "position:fixed;opacity:0;left:-1000px;top:0;";
+    document.body.appendChild(ta);
+    ta.focus();
+    const ok = document.execCommand("paste");
+    const v = ta.value;
+    document.body.removeChild(ta);
+    if (ok && v) return v;
+  } catch (_e) { /* blocked, try next */ }
+  try {
+    const t = await readClipboardBackend();
+    if (t) return t;
+  } catch (_e) { /* backend unavailable */ }
+  return "";
+}
+
+/** Pull a Steam Web API key (32 hex characters) out of whatever was copied. */
+function extractApiKey(text: string): string {
+  const m = (text || "").match(/\b[0-9A-Fa-f]{32}\b/);
+  if (m) return m[0];
+  const t = (text || "").trim();
+  return /^[A-Za-z0-9]{16,64}$/.test(t) ? t : "";
+}
+
 const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, onKeySaved }) => {
   const [saving, setSaving] = useState(false);
   const [keyValue, setKeyValue] = useState("");
@@ -585,6 +622,25 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
     setSaving(false);
   };
 
+  const pasteFromClipboard = async () => {
+    const key = extractApiKey(await readClipboardText());
+    if (!key) {
+      toaster.toast({
+        title: "Demo Finder",
+        body: "No Steam API key found on the clipboard. Copy the 32 character key from the Steam page first.",
+      });
+      return;
+    }
+    setKeyValue(key);
+    const input = wrapperRef.current?.querySelector("input");
+    if (input) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (setter) setter.call(input, key); else input.value = key;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    toaster.toast({ title: "Demo Finder", body: `Key pasted (ends in ${key.slice(-4)}). Press Save API Key.` });
+  };
+
   const openKeyPage = async () => {
     const isWindows = /Windows/i.test(navigator.userAgent || "");
     const viaBackend = async (): Promise<boolean> => {
@@ -628,6 +684,13 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
+        <ButtonItem layout="below" onClick={pasteFromClipboard}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
+            📋 Paste Key from Clipboard
+          </div>
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
         <div ref={wrapperRef}>
           <TextField
             label="Steam Web API Key"
@@ -653,6 +716,9 @@ const ApiKeySetup: FC<{ hasKey: boolean; onKeySaved: () => void }> = ({ hasKey, 
       <div style={helpTextStyle}>
         Go to steamcommunity.com/dev/apikey to register a key.
         Enter any domain name (e.g. "localhost").
+        Copy the key on that page (long-press it, or long-press and Select All, then Copy),
+        come back here and press Paste Key from Clipboard. The key is found automatically
+        even if extra text was copied with it.
         Your wishlist must also be set to Public.
       </div>
     </PanelSection>
